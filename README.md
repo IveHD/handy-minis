@@ -4,7 +4,7 @@
 
 ## 下载与安装
 
-[下载 ClipStack 1.0 · 通用版 DMG](https://github.com/IveHD/ClipStack/releases/download/v1.0/ClipStack-1.0-macOS-Universal.dmg)
+[下载 ClipStack 1.0.1 · 通用版 DMG](https://github.com/IveHD/ClipStack/releases/download/v1.0.1/ClipStack-1.0.1-macOS-Universal.dmg)
 
 需要 macOS 14 或更高版本，支持 Intel 和 Apple 芯片 Mac 原生运行。
 

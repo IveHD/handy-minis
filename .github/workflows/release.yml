@@ -1,0 +1,42 @@
+name: Publish release
+on:
+  push:
+    tags:
+      - 'v1.0.1'
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Sparkle
+        run: scripts/setup-sparkle.sh
+      - name: Build app
+        env:
+          APTABASE_APP_KEY: A-US-7430534959
+          RELEASE_BUILD: 1
+        run: APP_VERSION="${GITHUB_REF_NAME#v}" ./build.sh
+      - name: Package
+        run: |
+          mkdir -p dist
+          mkdir -p .build/dmg
+          ditto ClipStack.app .build/dmg/ClipStack.app
+          ln -s /Applications .build/dmg/Applications
+          hdiutil create -volname ClipStack -srcfolder .build/dmg -format UDZO "dist/ClipStack-${GITHUB_REF_NAME#v}-macOS-Universal.dmg"
+          (cd dist && shasum -a 256 ./*.dmg > SHA256SUMS.txt)
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > /tmp/release-notes.md <<'NOTES'
+          剪贴板队列支持在当前全屏空间打开和回贴，新增剪贴板样式的应用图标。适用于 macOS 14 及以上，支持 Apple 芯片和 Intel。
+
+          此包使用临时签名，尚未经过 Apple 公证，macOS 可能阻止首次打开。
+          自动更新地址尚未配置，已接入可关闭的匿名使用统计。
+          安装后通过菜单栏图标或 ⌘⇧C 打开剪贴板队列。
+          NOTES
+          gh release create "$GITHUB_REF_NAME" dist/*.dmg dist/SHA256SUMS.txt --verify-tag --title "ClipStack ${GITHUB_REF_NAME#v}" --notes-file /tmp/release-notes.md

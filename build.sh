@@ -33,7 +33,8 @@ clang \
   Sources/ClipStack/*.m
 
 cp Info.plist "$APP/Contents/Info.plist"
-mkdir -p "$APP/Contents/Frameworks"
+mkdir -p "$APP/Contents/Frameworks" "$APP/Contents/Resources"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 ditto "$SPARKLE/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 python3 scripts/configure-build.py "$APP/Contents/Info.plist"
 if security find-identity -p codesigning -v | grep -q "$SIGN_ID"; then
