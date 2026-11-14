@@ -19,8 +19,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)show;
 - (void)hide;
 - (void)setShortcutTitle:(NSString *)title;
-/// Dismiss the panel without giving up active-app status, so the caller can hand focus back.
-- (void)orderOutKeepingActive;
 @end
 
 NS_ASSUME_NONNULL_END

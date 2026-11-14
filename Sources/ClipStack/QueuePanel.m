@@ -1,14 +1,12 @@
 #import "QueuePanel.h"
 #import "AccessibilityTrust.h"
 #import <ApplicationServices/ApplicationServices.h>
-#import <Carbon/Carbon.h>
 
 @interface KeyablePanel : NSPanel
 @end
 
 @implementation KeyablePanel
 - (BOOL)canBecomeKeyWindow { return YES; }
-- (BOOL)canBecomeMainWindow { return YES; }
 @end
 
 @interface RoundedEffectView : NSVisualEffectView
@@ -265,7 +263,6 @@
 @property NSTextField *emptyLabel;
 @property NSMutableArray<ClipItem *> *rows;
 @property id keyMonitor;
-@property BOOL acceptResign;
 @property BOOL updatingSelection;
 @property NSInteger lastSelectedRow;
 - (void)pasteRow:(NSInteger)row;
@@ -336,75 +333,30 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     return self.panel.isVisible;
 }
 
-static void BringCopyQueueFront(void) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    // macOS 14 ignores a plain activate() unless the call is marked as coming
-    // from the user. The global hotkey is that user action.
-    ProcessSerialNumber psn = { 0, kCurrentProcess };
-    SetFrontProcessWithOptions(&psn, kSetFrontProcessCausedByUser);
-    [NSApp activateIgnoringOtherApps:YES];
-#pragma clang diagnostic pop
-}
-
 - (void)show {
     self.veil.layer.backgroundColor = [[NSColor windowBackgroundColor] colorWithAlphaComponent:0.94].CGColor;
-    self.acceptResign = NO;
     self.searchField.stringValue = @"";
     [self refreshShortcutTitle];
     [self refreshBanner];
     [self reloadKeepingSelection:NO];
     [self placeOnMouseScreen];
     self.panel.alphaValue = 0;
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-    BringCopyQueueFront();
     [self.panel makeKeyAndOrderFront:nil];
     [self.panel makeFirstResponder:self.searchField];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (!self.panel.isVisible || self.panel.isKeyWindow) return;
-        BringCopyQueueFront();
-        [self.panel makeKeyAndOrderFront:nil];
-        [self.panel makeFirstResponder:self.searchField];
-    });
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0.12;
         self.panel.animator.alphaValue = 1;
     }];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (!self.panel.isVisible) return;
-        if (!self.panel.isKeyWindow) {
-            BringCopyQueueFront();
-            [self.panel makeKeyAndOrderFront:nil];
-            [self.panel makeFirstResponder:self.searchField];
-        }
-        self.acceptResign = YES;
-    });
 }
 
 - (void)hide {
-    if (!self.panel.isVisible) return;
-    self.acceptResign = NO;
-    [self.panel orderOut:nil];
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
-}
-
-- (void)orderOutKeepingActive {
-    self.acceptResign = NO;
-    if (!self.panel.isVisible) return;
     [self.panel orderOut:nil];
 }
 
 - (void)windowDidResignKey:(NSNotification *)notification {
-    if (!self.acceptResign || !self.panel.isVisible) return;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (!self.acceptResign || !self.panel.isVisible || self.panel.isKeyWindow) return;
-        pid_t frontPID = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
-        if (frontPID == NSRunningApplication.currentApplication.processIdentifier) {
-            [self.panel makeKeyAndOrderFront:nil];
-            [self.panel makeFirstResponder:self.searchField];
-            return;
-        }
-        [self hide];
+    // Defer until AppKit finishes the current key-window transition.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self.panel.isVisible && !self.panel.isKeyWindow) [self hide];
     });
 }
 
@@ -412,13 +364,14 @@ static void BringCopyQueueFront(void) {
 
 - (void)buildPanel {
     self.panel = [[KeyablePanel alloc] initWithContentRect:NSMakeRect(0, 0, 460, 520)
-                                                 styleMask:NSWindowStyleMaskBorderless
+                                                 styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
                                                    backing:NSBackingStoreBuffered
                                                      defer:NO];
     self.panel.delegate = self;
     self.panel.opaque = NO;
     self.panel.backgroundColor = NSColor.clearColor;
     self.panel.hasShadow = YES;
+    self.panel.floatingPanel = YES;
     self.panel.level = NSPopUpMenuWindowLevel;
     self.panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary;
     self.panel.movableByWindowBackground = YES;

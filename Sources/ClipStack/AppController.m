@@ -431,7 +431,6 @@ static UInt32 CarbonModifiersFromFlags(NSEventModifierFlags flags) {
         });
         return;
     }
-    [self rememberFrontApp];
     [self togglePanel];
 }
 
@@ -443,6 +442,7 @@ static UInt32 CarbonModifiersFromFlags(NSEventModifierFlags flags) {
 }
 
 - (void)rememberFrontApp {
+    if (self.panel.isVisible) return;
     NSRunningApplication *front = NSWorkspace.sharedWorkspace.frontmostApplication;
     if (front && !front.terminated && front.processIdentifier != getpid()) {
         self.previousApp = front;
@@ -470,11 +470,6 @@ static UInt32 CarbonModifiersFromFlags(NSEventModifierFlags flags) {
     [self.panel show];
 }
 
-- (void)returnToBackground {
-    if (self.panel.isVisible) return;
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
-}
-
 #pragma mark - QueuePanelDelegate
 
 - (void)queuePanel:(QueuePanel *)panel didChooseItem:(ClipItem *)item paste:(BOOL)paste {
@@ -483,30 +478,25 @@ static UInt32 CarbonModifiersFromFlags(NSEventModifierFlags flags) {
     NSRunningApplication *target = self.previousApp;
     if (!target || target.terminated || target.processIdentifier == getpid()) target = nil;
 
-    // Stay active until the previous app has taken focus, then paste there.
-    [panel orderOutKeepingActive];
-    if (!paste || !target) {
-        [self returnToBackground];
-        return;
-    }
+    [panel hide];
+    if (!paste || !target) return;
     if (!ClipStackAccessibilityTrusted()) {
         ClipStackPromptAccessibility();
-        [self returnToBackground];
         return;
     }
-    [NSApp yieldActivationToApplication:target];
-    [target activateFromApplication:NSRunningApplication.currentApplication options:NSApplicationActivateAllWindows];
+    if (NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier != target.processIdentifier) {
+        [NSApp yieldActivationToApplication:target];
+        [target activateFromApplication:NSRunningApplication.currentApplication options:0];
+    }
     [self sendPasteToApplication:target attempt:0];
 }
 
 - (void)sendPasteToApplication:(NSRunningApplication *)target attempt:(NSInteger)attempt {
-    if (!target || target.terminated) {
-        [self returnToBackground];
-        return;
-    }
+    if (target.terminated || self.panel.isVisible) return;
     pid_t frontPID = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
     BOOL ready = frontPID == target.processIdentifier;
-    if (!ready && attempt < 20) {
+    if (!ready) {
+        if (attempt >= 20) return;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.04 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [self sendPasteToApplication:target attempt:attempt + 1];
         });
@@ -515,11 +505,10 @@ static UInt32 CarbonModifiersFromFlags(NSEventModifierFlags flags) {
     // Give the target a moment to restore its text field. Prefer the app's own
     // Paste menu: injected ⌘V is ignored by browsers, Electron, and secure input.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.12 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (self.panel.isVisible || target.terminated ||
+            NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier != target.processIdentifier) return;
         BOOL pressed = PressPasteMenu(target.processIdentifier);
         if (!pressed) PostCommandVToPid(target.processIdentifier);
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self returnToBackground];
-        });
     });
 }
 
@@ -546,7 +535,7 @@ static UInt32 CarbonModifiersFromFlags(NSEventModifierFlags flags) {
 }
 
 - (void)settingsPanelDidClose:(SettingsPanel *)panel {
-    [self returnToBackground];
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 }
 
 @end
