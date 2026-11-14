@@ -1,0 +1,6 @@
+.DS_Store
+CopyQueue.app
+ClipStack.app
+.build/
+
+dist/
