@@ -4,13 +4,13 @@
 
 ## 下载与安装
 
-[下载 ClipStack 1.0.1 · 通用版 DMG](https://github.com/IveHD/ClipStack/releases/download/v1.0.1/ClipStack-1.0.1-macOS-Universal.dmg)
+[下载 ClipStack 1.0.2 · 通用版 DMG](https://github.com/IveHD/ClipStack/releases/download/v1.0.2/ClipStack-1.0.2-macOS-Universal.dmg)
 
 需要 macOS 14 或更高版本，支持 Intel 和 Apple 芯片 Mac 原生运行。
 
 1. 下载并打开 DMG。
 2. 将 **ClipStack** 拖入 **Applications（应用程序）**。
-3. 从“应用程序”打开 ClipStack，点击菜单栏中的剪贴板图标即可使用。
+3. 先从“应用程序”打开 ClipStack。之后在目标应用内按 ⌘⇧C，即可打开剪贴板浮层。
 4. 在“系统设置 → 隐私与安全性 → 辅助功能”中允许 ClipStack，以使用自动粘贴。
 
 当前版本尚未通过 Apple 公证。若首次打开被系统阻止，请确认下载自本仓库，再按照“隐私与安全性”中的提示允许打开。

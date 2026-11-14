@@ -341,7 +341,8 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     [self reloadKeepingSelection:NO];
     [self placeOnMouseScreen];
     self.panel.alphaValue = 0;
-    [self.panel makeKeyAndOrderFront:nil];
+    [self.panel orderFrontRegardless];
+    [self.panel makeKeyWindow];
     [self.panel makeFirstResponder:self.searchField];
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0.12;
@@ -373,7 +374,9 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     self.panel.hasShadow = YES;
     self.panel.floatingPanel = YES;
     self.panel.level = NSPopUpMenuWindowLevel;
-    self.panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary;
+    self.panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
+                                    NSWindowCollectionBehaviorFullScreenAuxiliary |
+                                    NSWindowCollectionBehaviorCanJoinAllApplications;
     self.panel.movableByWindowBackground = YES;
     self.panel.hidesOnDeactivate = NO;
     self.panel.becomesKeyOnlyIfNeeded = NO;

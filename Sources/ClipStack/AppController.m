@@ -172,7 +172,6 @@ static void OpenAccessibilitySettings(void) {
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     if ([self handOffToExistingInstance]) exit(0);
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 
     self.store = [ClipboardStore new];
     [self.store load];
@@ -483,10 +482,6 @@ static UInt32 CarbonModifiersFromFlags(NSEventModifierFlags flags) {
     if (!ClipStackAccessibilityTrusted()) {
         ClipStackPromptAccessibility();
         return;
-    }
-    if (NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier != target.processIdentifier) {
-        [NSApp yieldActivationToApplication:target];
-        [target activateFromApplication:NSRunningApplication.currentApplication options:0];
     }
     [self sendPasteToApplication:target attempt:0];
 }

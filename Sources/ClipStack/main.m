@@ -3,6 +3,7 @@
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
         NSApplication *app = [NSApplication sharedApplication];
+        [app setActivationPolicy:NSApplicationActivationPolicyAccessory];
         AppController *controller = [AppController shared];
         app.delegate = controller;
         [app run];
