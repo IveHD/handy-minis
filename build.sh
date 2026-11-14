@@ -11,6 +11,7 @@ if [[ ! -d "$SPARKLE/Sparkle.framework" ]]; then
   exit 1
 fi
 ARCH="$(uname -m)"
+EXPLICIT_SIGN_ID="${SIGN_ID:-}"
 SIGN_ID="${SIGN_ID:-ClipStack Codesign}"
 
 rm -rf "$APP"
@@ -39,6 +40,11 @@ python3 scripts/configure-build.py "$APP/Contents/Info.plist"
 if security find-identity -p codesigning -v | grep -q "$SIGN_ID"; then
   codesign --force --deep --sign "$SIGN_ID" "$APP" >/dev/null
 else
+  if [[ -n "$EXPLICIT_SIGN_ID" ]]; then
+    echo "无法访问指定签名身份 $SIGN_ID，请检查钥匙串与构建权限。" >&2
+    exit 1
+  fi
+  echo "警告：未找到 ClipStack Codesign，使用临时签名；重新构建可能需要重新授权辅助功能。" >&2
   codesign --force --deep --sign - "$APP" >/dev/null
 fi
 
