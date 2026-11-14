@@ -10,7 +10,6 @@ if [[ ! -d "$SPARKLE/Sparkle.framework" ]]; then
   echo "请先执行 scripts/setup-sparkle.sh" >&2
   exit 1
 fi
-ARCH="$(uname -m)"
 EXPLICIT_SIGN_ID="${SIGN_ID:-}"
 SIGN_ID="${SIGN_ID:-ClipStack Codesign}"
 
@@ -22,7 +21,7 @@ clang \
   -O2 \
   -Wall \
   -isysroot "$SDK" \
-  -arch "$ARCH" \
+  -arch x86_64 -arch arm64 \
   -mmacosx-version-min=14.0 \
   -F "$SPARKLE" -framework Sparkle \
   -Wl,-rpath,@executable_path/../Frameworks \
