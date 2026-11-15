@@ -1,8 +1,10 @@
-# DeskKit
+# DeskKit for macOS
 
 DeskKit 是一款常驻 macOS 菜单栏的效率工具。它能找回复制过的内容，对截图做标注、打码和文字识别，也能把窗口拖到屏幕边缘快速排列。
 
-[下载 DeskKit 1.0.3 通用版 DMG](https://github.com/IveHD/desk-kit/releases/download/v1.0.3/DeskKit-1.0.3-macOS-Universal.dmg) · [发布说明与 SHA-256 校验文件](https://github.com/IveHD/desk-kit/releases/tag/v1.0.3)
+[下载最新版本](https://github.com/IveHD/desk-kit/releases/latest) · [发布历史与校验文件](https://github.com/IveHD/desk-kit/releases)
+
+[DeskKit 首页](https://ivehd.github.io/desk-kit/) · [截图打码和 OCR 指南](https://ivehd.github.io/desk-kit/guides/mac-screenshot-ocr/) · [剪贴板历史指南](https://ivehd.github.io/desk-kit/guides/mac-clipboard-history/)
 
 ## 安装
 

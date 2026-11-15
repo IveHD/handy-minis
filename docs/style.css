@@ -1,0 +1,52 @@
+:root {
+  color-scheme: light;
+  font-family: "Instrument Sans", "PingFang SC", system-ui, sans-serif;
+  background: #f5f7f4;
+  color: #14221c;
+  line-height: 1.75;
+}
+
+body { margin: 0; }
+header { border-bottom: 1px solid #d7e2da; }
+
+nav, main, footer {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1rem clamp(1rem, 5vw, 3rem);
+}
+
+nav { display: flex; align-items: center; justify-content: space-between; }
+.brand { font-weight: 750; font-size: 1.2rem; text-decoration: none; }
+main { padding-block: clamp(2rem, 7vw, 5rem) 3rem; }
+h1, h2 { line-height: 1.2; }
+h1 { font-size: clamp(2rem, 7vw, 4rem); margin: 0 0 1rem; }
+h2 { font-size: 1.4rem; margin-top: 0; }
+p, li { max-width: 66ch; }
+.intro { font-size: 1.15rem; }
+a { color: #135a44; text-underline-offset: .2em; }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  margin: 1.5rem 0 2.5rem;
+}
+
+.button {
+  display: inline-block;
+  padding: .55rem 1rem;
+  border: 1px solid #155540;
+  border-radius: .5rem;
+  background: #155540;
+  color: white;
+  text-decoration: none;
+  font-weight: 650;
+}
+
+.button.secondary { color: #155540; background: transparent; }
+.button:hover, a:hover { text-decoration: underline; }
+section { border-top: 1px solid #d7e2da; padding-top: 1.5rem; margin-top: 2rem; }
+img { display: block; max-width: 100%; height: auto; border-radius: .75rem; }
+li + li { margin-top: .45rem; }
+kbd { font-family: system-ui, sans-serif; padding: .05em .3em; background: #e1ebe4; border-radius: .25em; }
+footer { border-top: 1px solid #d7e2da; font-size: .95rem; }
