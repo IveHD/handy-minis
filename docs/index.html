@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DeskKit for macOS｜截图 OCR、剪贴板历史与窗口贴靠</title>
-  <meta name="description" content="DeskKit 是一款 macOS 菜单栏工具，可以给截图打码并在本机识别中英文、找回剪贴板历史，也能拖拽整理窗口。">
+  <meta name="description" content="DeskKit 是一款 macOS 菜单栏工具。找回复制过的内容，给截图打码并在本机识别文字，或把窗口贴靠到屏幕边缘。">
   <link rel="canonical" href="https://ivehd.github.io/desk-kit/">
   <meta property="og:title" content="DeskKit for macOS｜截图 OCR、剪贴板历史与窗口贴靠">
-  <meta property="og:description" content="DeskKit 是一款 macOS 菜单栏工具，可以给截图打码并在本机识别中英文、找回剪贴板历史，也能拖拽整理窗口。">
+  <meta property="og:description" content="DeskKit 是一款 macOS 菜单栏工具。找回复制过的内容，给截图打码并在本机识别文字，或把窗口贴靠到屏幕边缘。">
   <meta property="og:url" content="https://ivehd.github.io/desk-kit/">
   <link rel="stylesheet" href="./style.css">
 </head>
@@ -18,38 +18,30 @@
   </nav></header>
   <main>
     <h1>DeskKit for macOS</h1>
-    <p class="intro">DeskKit 是一款 macOS 菜单栏工具，可以给截图打码并在本机识别中英文、找回剪贴板历史，也能拖拽整理窗口。</p>
+    <p class="intro">DeskKit 是一款 macOS 菜单栏工具。找回复制过的内容，给截图打码并在本机识别文字，或把窗口贴靠到屏幕边缘。</p>
     <div class="actions">
       <a class="button" href="https://github.com/IveHD/desk-kit/releases/latest">下载正式版</a>
       <a class="button secondary" href="https://github.com/IveHD/desk-kit">查看 GitHub 仓库</a>
     </div>
 
+    <p>下方按当前开发版展示操作。剪贴板演示使用新版界面与示例数据，截图和窗口布局使用操作示意。GitHub 当前提供 v1.0.3。</p>
+
     <section>
-      <h2>截图、打码和文字识别</h2>
-      <p>用 <kbd>⌃⌘A</kbd> 框选截图，添加箭头、马赛克或实心遮挡，再复制识别出的文字。</p>
-      <img src="demos/screenshot-ocr.gif" alt="DeskKit 框选截图，遮挡敏感区域，再选取 OCR 结果">
-      <p><a href="guides/mac-screenshot-ocr/">Mac 截图打码与 OCR 教程 →</a></p>
+      <h2>找回复制内容，整理常用语和文件</h2>
+      <p>按 <kbd>⌘⇧C</kbd> 打开剪贴板，搜索之前复制的内容。选中文本后按 <kbd>⇧↵</kbd> 去掉格式后粘贴，或用 <kbd>⌃↵</kbd> 存为常用语。文件可以放进「文件暂存」，需要时拖到目标应用。</p>
+      <img src="demos/clipboard-workflow.gif" width="460" height="520" alt="新版剪贴板界面演示，依次展示历史、常用语和文件暂存三个分区">
+      <p><a href="guides/mac-clipboard-history/">查看剪贴板操作指南 →</a></p>
     </section>
     <section>
-      <h2>剪贴板历史</h2>
-      <p>用 <kbd>⌘⇧C</kbd> 查看最近复制的文本、图片和文件，搜索后按回车粘贴。</p>
-      <img src="demos/clipboard.gif" alt="搜索剪贴板历史并将选中的记录粘贴回原应用" loading="lazy">
-      <p><a href="guides/mac-clipboard-history/">Mac 剪贴板历史教程 →</a></p>
+      <h2>给截图打码，在本机提取文字</h2>
+      <p>按 <kbd>⌃⌘A</kbd> 框选截图。用 <kbd>M</kbd> 加马赛克，或用 <kbd>B</kbd> 实心遮挡。按 <kbd>X</kbd> 识别中英文，选中文字后用 <kbd>⌘C</kbd> 复制。</p>
+      <img src="demos/screenshot-workflow.gif" width="864" height="420" alt="截图工作流程示意，依次框选、遮挡邮箱并识别所选文字" loading="lazy">
+      <p><a href="guides/mac-screenshot-ocr/">查看截图打码与 OCR 指南 →</a></p>
     </section>
     <section>
-      <h2>拖拽整理窗口</h2>
-      <p>在设置中开启后，把窗口拖到屏幕边缘或四角，预览半屏或四分之一布局并松手贴靠。</p>
-      <img src="demos/window-tiling.gif" alt="将窗口拖到屏幕右侧，预览并贴靠右半屏的布局示意" loading="lazy">
-    </section>
-    <section>
-      <h2>开发版新增功能</h2>
-      <p>以下功能已在开发版中实现。当前 GitHub 下载版为 v1.0.3。</p>
-      <ul>
-        <li><strong>常用语</strong>。把历史中的文本存为带名称的短语，需要时搜索并粘贴。</li>
-        <li><strong>纯文本粘贴与清理</strong>。按 <kbd>⇧↵</kbd> 去掉格式后粘贴，也可从条目菜单清理多余空格、去掉折行或合并成一行。</li>
-        <li><strong>文件暂存</strong>。把文件拖进暂存区，或从剪贴板历史加入，再拖到目标应用。</li>
-        <li><strong>保存和恢复窗口布局</strong>。在菜单栏选择「窗口布局 → 保存当前布局…」，记录当前桌面的窗口位置和大小。再次打开对应窗口后，从同一菜单选择布局名称恢复。</li>
-      </ul>
+      <h2>整理窗口，保存并恢复布局</h2>
+      <p>把窗口拖到屏幕边缘或四角贴靠。排好之后，从菜单栏的「窗口布局」保存现在的位置和大小。再次打开相应窗口后，选择已保存的布局即可恢复。</p>
+      <img src="demos/window-workflow.gif" width="864" height="420" alt="窗口工作流程示意，展示左右贴靠、保存布局和恢复布局" loading="lazy">
     </section>
     <section>
       <h2>安装和权限</h2>
