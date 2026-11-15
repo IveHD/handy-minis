@@ -1,6 +1,7 @@
 .DS_Store
 CopyQueue.app
 ClipStack.app
+DeskKit.app
 .build/
 
 dist/

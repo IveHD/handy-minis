@@ -1,6 +1,7 @@
 #import "QueuePanel.h"
 #import "AccessibilityTrust.h"
 #import <ApplicationServices/ApplicationServices.h>
+#import <QuartzCore/QuartzCore.h>
 
 @interface KeyablePanel : NSPanel
 @end
@@ -10,26 +11,44 @@
 @end
 
 @interface RoundedEffectView : NSVisualEffectView
+@property NSSize maskSize;
 @end
 
 @implementation RoundedEffectView
 - (instancetype)initWithFrame:(NSRect)frameRect {
     self = [super initWithFrame:frameRect];
     if (self) {
-        self.material = NSVisualEffectMaterialMenu;
+        self.material = NSVisualEffectMaterialPopover;
         self.blendingMode = NSVisualEffectBlendingModeBehindWindow;
         self.state = NSVisualEffectStateActive;
         self.wantsLayer = YES;
-        self.layer.cornerRadius = 16;
+        self.layer.cornerRadius = 22;
+        self.layer.cornerCurve = kCACornerCurveContinuous;
         self.layer.masksToBounds = YES;
         self.layer.borderWidth = 1;
     }
     return self;
 }
 
+- (void)layout {
+    [super layout];
+    NSSize size = self.bounds.size;
+    if (size.width <= 0 || size.height <= 0 || NSEqualSizes(size, self.maskSize)) return;
+    self.maskSize = size;
+    // The material is composited separately from the view's backing layer.
+    self.maskImage = [NSImage imageWithSize:size flipped:NO drawingHandler:^BOOL(NSRect bounds) {
+        [NSColor.blackColor setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:bounds xRadius:22 yRadius:22] fill];
+        return YES;
+    }];
+    [self.window invalidateShadow];
+}
+
 - (void)viewDidChangeEffectiveAppearance {
     [super viewDidChangeEffectiveAppearance];
-    self.layer.borderColor = [NSColor.separatorColor colorWithAlphaComponent:0.45].CGColor;
+    [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
+        self.layer.borderColor = [NSColor.separatorColor colorWithAlphaComponent:0.32].CGColor;
+    }];
 }
 @end
 
@@ -50,6 +69,7 @@
 @property NSTextView *textView;
 @property (nonatomic) BOOL expanded;
 @property BOOL imagePreview;
+- (void)prepareTextPreview;
 @end
 
 @implementation ClipCellView
@@ -83,37 +103,43 @@
         _iconView.wantsLayer = YES;
         _iconView.layer.cornerRadius = 6;
         _iconView.layer.masksToBounds = YES;
-        _textView = [[PassiveTextView alloc] initWithFrame:NSZeroRect];
-        _textView.editable = NO;
-        _textView.selectable = NO;
-        _textView.drawsBackground = NO;
-        _textView.font = [NSFont systemFontOfSize:13];
-        _textView.textContainerInset = NSMakeSize(0, 0);
-        _textView.textContainer.lineFragmentPadding = 0;
-        _textView.textContainer.widthTracksTextView = NO;
-        _textView.textContainer.heightTracksTextView = NO;
-        _textView.horizontallyResizable = NO;
-        _textView.verticallyResizable = YES;
-        _textView.minSize = NSMakeSize(0, 0);
-        _textView.maxSize = NSMakeSize(CGFLOAT_MAX, CGFLOAT_MAX);
-        _textScroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
-        _textScroll.drawsBackground = NO;
-        _textScroll.hasVerticalScroller = YES;
-        _textScroll.autohidesScrollers = YES;
-        _textScroll.borderType = NSNoBorder;
-        _textScroll.documentView = _textView;
-        for (NSView *view in @[_indexLabel, _iconView, _primaryLabel, _secondaryLabel, _timeLabel, _textScroll]) {
+        for (NSView *view in @[_indexLabel, _iconView, _primaryLabel, _secondaryLabel, _timeLabel]) {
             [self addSubview:view];
         }
     }
     return self;
 }
 
+- (void)prepareTextPreview {
+    if (_textView) return;
+    _textView = [[PassiveTextView alloc] initWithFrame:NSZeroRect];
+    _textView.editable = NO;
+    _textView.selectable = NO;
+    _textView.drawsBackground = NO;
+    _textView.font = [NSFont systemFontOfSize:13];
+    _textView.textContainerInset = NSMakeSize(0, 0);
+    _textView.textContainer.lineFragmentPadding = 0;
+    _textView.textContainer.widthTracksTextView = NO;
+    _textView.textContainer.heightTracksTextView = NO;
+    _textView.horizontallyResizable = NO;
+    _textView.verticallyResizable = YES;
+    _textView.minSize = NSMakeSize(0, 0);
+    _textView.maxSize = NSMakeSize(CGFLOAT_MAX, CGFLOAT_MAX);
+    _textScroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+    _textScroll.drawsBackground = NO;
+    _textScroll.hasVerticalScroller = YES;
+    _textScroll.autohidesScrollers = YES;
+    _textScroll.borderType = NSNoBorder;
+    _textScroll.documentView = _textView;
+    [self addSubview:_textScroll];
+}
+
 - (void)setExpanded:(BOOL)expanded {
     _expanded = expanded;
     self.wantsLayer = YES;
-    self.layer.cornerRadius = 8;
-    self.layer.backgroundColor = (expanded ? [NSColor.controlAccentColor colorWithAlphaComponent:0.18] : NSColor.clearColor).CGColor;
+    self.layer.cornerRadius = 10;
+    self.layer.cornerCurve = kCACornerCurveContinuous;
+    self.layer.backgroundColor = (expanded ? [NSColor.controlAccentColor colorWithAlphaComponent:0.14] : NSColor.clearColor).CGColor;
     if (!expanded) {
         self.textScroll.hidden = YES;
         self.textView.string = @"";
@@ -214,14 +240,14 @@
 @implementation PanelRootView
 - (void)layout {
     [super layout];
-    NSRect bounds = NSInsetRect(self.bounds, 14, 12);
+    NSRect bounds = NSInsetRect(self.bounds, 18, 16);
     CGFloat top = NSMaxY(bounds);
 
     [self.titleLabel sizeToFit];
     [self.countLabel sizeToFit];
     NSRect titleFrame = self.titleLabel.frame;
-    titleFrame.origin = NSMakePoint(bounds.origin.x, top - 22);
-    titleFrame.size.height = 20;
+    titleFrame.origin = NSMakePoint(bounds.origin.x, top - 25);
+    titleFrame.size.height = 25;
     self.titleLabel.frame = titleFrame;
 
     NSRect countFrame = self.countLabel.frame;
@@ -234,9 +260,9 @@
     shortcutFrame.size.height = 18;
     shortcutFrame.origin = NSMakePoint(NSMaxX(bounds) - shortcutFrame.size.width, top - 20);
     self.shortcutLabel.frame = shortcutFrame;
-    self.searchField.frame = NSMakeRect(bounds.origin.x, top - 22 - 8 - 30, bounds.size.width, 30);
+    self.searchField.frame = NSMakeRect(bounds.origin.x, top - 25 - 8 - 30, bounds.size.width, 30);
 
-    CGFloat cursor = top - 22 - 8 - 30 - 8;
+    CGFloat cursor = top - 25 - 8 - 30 - 8;
     if (!self.banner.hidden) {
         self.banner.frame = NSMakeRect(bounds.origin.x, cursor - 58, bounds.size.width, 58);
         cursor -= 58 + 8;
@@ -253,7 +279,6 @@
 @interface QueuePanel () <NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate>
 @property ClipboardStore *store;
 @property KeyablePanel *panel;
-@property NSView *veil;
 @property NSTextField *countLabel;
 @property NSTextField *shortcutLabel;
 @property NSSearchField *searchField;
@@ -266,16 +291,18 @@
 @property BOOL updatingSelection;
 @property NSInteger lastSelectedRow;
 - (void)pasteRow:(NSInteger)row;
+- (void)pasteItem:(ClipItem *)item;
+- (ClipItem *)itemForRow:(NSInteger)row;
 @end
 
 @implementation ClickTableView
 - (void)mouseDown:(NSEvent *)event {
     [super mouseDown:event];
-    NSInteger row = self.clickedRow;
-    if (row < 0) return;
+    ClipItem *item = [self.owner itemForRow:self.clickedRow];
+    if (!item) return;
     // Wait until this mouse tracking turn ends, or the target app receives the click.
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self.owner pasteRow:row];
+        [self.owner pasteItem:item];
     });
 }
 @end
@@ -334,17 +361,20 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
 }
 
 - (void)show {
-    self.veil.layer.backgroundColor = [[NSColor windowBackgroundColor] colorWithAlphaComponent:0.94].CGColor;
     self.searchField.stringValue = @"";
     [self refreshShortcutTitle];
     [self refreshBanner];
     [self reloadKeepingSelection:NO];
     [self placeOnMouseScreen];
-    self.panel.alphaValue = 0;
-    [self.panel makeKeyAndOrderFront:nil];
+    BOOL animate = !NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion;
+    self.panel.alphaValue = animate ? 0.78 : 1;
+    [self.panel orderFrontRegardless];
+    [self.panel makeKeyWindow];
     [self.panel makeFirstResponder:self.searchField];
+    if (!animate) return;
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-        context.duration = 0.12;
+        context.duration = 0.14;
+        context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
         self.panel.animator.alphaValue = 1;
     }];
 }
@@ -373,7 +403,9 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     self.panel.hasShadow = YES;
     self.panel.floatingPanel = YES;
     self.panel.level = NSPopUpMenuWindowLevel;
-    self.panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary;
+    self.panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
+                                    NSWindowCollectionBehaviorFullScreenAuxiliary |
+                                    NSWindowCollectionBehaviorCanJoinAllApplications;
     self.panel.movableByWindowBackground = YES;
     self.panel.hidesOnDeactivate = NO;
     self.panel.becomesKeyOnlyIfNeeded = NO;
@@ -382,28 +414,17 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     RoundedEffectView *effect = [RoundedEffectView new];
     self.panel.contentView = effect;
 
-    NSView *veil = [NSView new];
-    self.veil = veil;
-    veil.translatesAutoresizingMaskIntoConstraints = NO;
-    veil.wantsLayer = YES;
-    veil.layer.backgroundColor = [[NSColor windowBackgroundColor] colorWithAlphaComponent:0.94].CGColor;
-    [effect addSubview:veil];
-
     PanelRootView *root = [PanelRootView new];
     root.translatesAutoresizingMaskIntoConstraints = NO;
     [effect addSubview:root];
     [NSLayoutConstraint activateConstraints:@[
-        [veil.leadingAnchor constraintEqualToAnchor:effect.leadingAnchor],
-        [veil.trailingAnchor constraintEqualToAnchor:effect.trailingAnchor],
-        [veil.topAnchor constraintEqualToAnchor:effect.topAnchor],
-        [veil.bottomAnchor constraintEqualToAnchor:effect.bottomAnchor],
         [root.leadingAnchor constraintEqualToAnchor:effect.leadingAnchor],
         [root.trailingAnchor constraintEqualToAnchor:effect.trailingAnchor],
         [root.topAnchor constraintEqualToAnchor:effect.topAnchor],
         [root.bottomAnchor constraintEqualToAnchor:effect.bottomAnchor],
     ]];
 
-    NSTextField *title = MakeLabel(@"最近复制", 15, NSFontWeightSemibold);
+    NSTextField *title = MakeLabel(@"最近复制", 19, NSFontWeightSemibold);
     self.countLabel = MakeLabel(@"0", 12, NSFontWeightMedium);
     self.countLabel.textColor = NSColor.secondaryLabelColor;
     NSTextField *shortcut = MakeLabel(@"⌘⇧C", 11, NSFontWeightMedium);
@@ -429,7 +450,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     self.table.delegate = self;
     self.table.backgroundColor = NSColor.clearColor;
     self.table.rowHeight = 48;
-    self.table.intercellSpacing = NSMakeSize(0, 2);
+    self.table.intercellSpacing = NSMakeSize(0, 4);
     self.table.selectionHighlightStyle = NSTableViewSelectionHighlightStyleNone;
     self.table.allowsMultipleSelection = NO;
     self.table.allowsEmptySelection = NO;
@@ -477,7 +498,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     banner.wantsLayer = YES;
     banner.layer.backgroundColor = [NSColor.systemOrangeColor colorWithAlphaComponent:0.16].CGColor;
     banner.layer.cornerRadius = 8;
-    NSTextField *text = [NSTextField wrappingLabelWithString:@"还不能自动粘贴。在辅助功能里允许 ClipStack 后，回车会直接贴到刚才的应用。"];
+    NSTextField *text = [NSTextField wrappingLabelWithString:@"还不能自动粘贴。在辅助功能里允许 DeskKit 后，回车会直接贴到刚才的应用。"];
     text.font = [NSFont systemFontOfSize:11];
     text.textColor = NSColor.labelColor;
     text.translatesAutoresizingMaskIntoConstraints = NO;
@@ -532,7 +553,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
 }
 
 - (void)refreshBanner {
-    self.banner.hidden = ClipStackAccessibilityTrusted();
+    self.banner.hidden = DeskKitAccessibilityTrusted();
     self.banner.superview.needsLayout = YES;
     [self.banner.superview layoutSubtreeIfNeeded];
     self.panel.contentView.needsLayout = YES;
@@ -575,6 +596,8 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
 
 - (void)reloadKeepingSelection:(BOOL)keep {
     NSInteger previous = keep ? self.table.selectedRow : 0;
+    ClipItem *selectedItem = keep ? [self itemForRow:previous] : nil;
+    self.updatingSelection = YES;
     [self.rows removeAllObjects];
     [self.rows addObjectsFromArray:[self filteredItems]];
     [self.table reloadData];
@@ -588,13 +611,16 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
             : (searching ? @"没有匹配的内容" : @"还没有复制内容");
     } else {
         self.emptyLabel.hidden = YES;
-        self.lastSelectedRow = -1;
+        NSUInteger retainedSelection = selectedItem ? [self.rows indexOfObjectIdenticalTo:selectedItem] : NSNotFound;
+        if (retainedSelection != NSNotFound) previous = retainedSelection;
         if (previous < 0) previous = 0;
         if (previous >= (NSInteger)self.rows.count) previous = self.rows.count - 1;
         [self.table selectRowIndexes:[NSIndexSet indexSetWithIndex:previous] byExtendingSelection:NO];
-        [self.table scrollRowToVisible:previous];
     }
-    [self.panel.contentView layoutSubtreeIfNeeded];
+    self.lastSelectedRow = -1;
+    self.updatingSelection = NO;
+    [self updateSelectedRows];
+    self.panel.contentView.needsLayout = YES;
 }
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
@@ -644,8 +670,12 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     NSString *secondary = item.secondaryText;
     cell.secondaryLabel.hidden = selected || secondary.length == 0;
     cell.secondaryLabel.stringValue = secondary ?: @"";
-    cell.textView.textColor = NSColor.labelColor;
-    cell.textView.string = selected && item.kind != ClipKindImage ? [self expandedTextForItem:item] : @"";
+    if (selected && item.kind != ClipKindImage) {
+        [cell prepareTextPreview];
+        cell.textView.textColor = NSColor.labelColor;
+        NSString *preview = [self expandedTextForItem:item];
+        if (![cell.textView.string isEqualToString:preview]) cell.textView.string = preview;
+    }
     cell.textScroll.hidden = !selected || item.kind == ClipKindImage;
     cell.primaryLabel.hidden = selected && item.kind != ClipKindImage;
     cell.timeLabel.stringValue = RelativeTime(item.createdAt);
@@ -663,44 +693,31 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     [cell setNeedsLayout:YES];
 }
 
-- (void)refreshVisibleCells {
-    [self.table enumerateAvailableRowViewsUsingBlock:^(NSTableRowView *rowView, NSInteger row) {
-        rowView.selectionHighlightStyle = NSTableViewSelectionHighlightStyleNone;
-        for (NSView *subview in rowView.subviews) {
-            if (![subview isKindOfClass:[ClipCellView class]]) subview.hidden = YES;
-        }
-        NSView *view = [self.table viewAtColumn:0 row:row makeIfNecessary:NO];
-        if ([view isKindOfClass:[ClipCellView class]] && row >= 0 && row < (NSInteger)self.rows.count) {
-            [self configureCell:(ClipCellView *)view row:row];
-        }
-        [rowView setNeedsDisplay:YES];
-    }];
+- (void)tableViewSelectionDidChange:(NSNotification *)notification {
+    [self updateSelectedRows];
 }
 
-- (void)tableViewSelectionDidChange:(NSNotification *)notification {
+- (void)updateSelectedRows {
     if (self.updatingSelection) return;
-    self.updatingSelection = YES;
     NSInteger selected = self.table.selectedRow;
+    if (selected == self.lastSelectedRow) return;
+    self.updatingSelection = YES;
     NSMutableIndexSet *rows = [NSMutableIndexSet indexSet];
     if (self.lastSelectedRow >= 0 && self.lastSelectedRow < (NSInteger)self.rows.count) [rows addIndex:self.lastSelectedRow];
     if (selected >= 0 && selected < (NSInteger)self.rows.count) [rows addIndex:selected];
     self.lastSelectedRow = selected;
     if (rows.count > 0) {
-        [NSAnimationContext beginGrouping];
-        [[NSAnimationContext currentContext] setDuration:0];
-        [self.table noteHeightOfRowsWithIndexesChanged:rows];
-        [NSAnimationContext endGrouping];
-        [self.table reloadDataForRowIndexes:rows columnIndexes:[NSIndexSet indexSetWithIndex:0]];
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = 0;
+            [self.table noteHeightOfRowsWithIndexesChanged:rows];
+        }];
+        [rows enumerateIndexesUsingBlock:^(NSUInteger index, BOOL *stop) {
+            NSView *cell = [self.table viewAtColumn:0 row:index makeIfNecessary:NO];
+            if ([cell isKindOfClass:[ClipCellView class]]) [self configureCell:(ClipCellView *)cell row:index];
+        }];
     }
-    [self refreshVisibleCells];
     if (selected >= 0) [self.table scrollRowToVisible:selected];
     self.updatingSelection = NO;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (self.updatingSelection) return;
-        self.updatingSelection = YES;
-        [self refreshVisibleCells];
-        self.updatingSelection = NO;
-    });
 }
 
 - (NSTableRowView *)tableView:(NSTableView *)tableView rowViewForRow:(NSInteger)row {
@@ -735,7 +752,10 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
 }
 
 - (void)pasteRow:(NSInteger)row {
-    ClipItem *item = [self itemForRow:row];
+    [self pasteItem:[self itemForRow:row]];
+}
+
+- (void)pasteItem:(ClipItem *)item {
     if (!item) return;
     [self.delegate queuePanel:self didChooseItem:item paste:YES];
 }
@@ -757,7 +777,6 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     ClipItem *item = [self itemForRow:row];
     if (!item) return;
     [self.delegate queuePanel:self didDeleteItem:item];
-    [self reloadKeepingSelection:YES];
 }
 
 #pragma mark - Keyboard

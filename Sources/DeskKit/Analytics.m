@@ -29,12 +29,12 @@
     NSDictionary *info = NSBundle.mainBundle.infoDictionary;
     NSDictionary *payload = @{@"timestamp": [formatter stringFromDate:now], @"sessionId": sessionID,
         @"eventName": event, @"props": @{}, @"systemProps": @{
-            @"isDebug": @(![info[@"ClipStackReleaseBuild"] boolValue]), @"osName": @"macOS",
+            @"isDebug": @(![info[@"DeskKitReleaseBuild"] boolValue]), @"osName": @"macOS",
             @"osVersion": osVersion, @"deviceModel": @"Mac",
             @"locale": NSLocale.currentLocale.localeIdentifier,
             @"appVersion": info[@"CFBundleShortVersionString"] ?: @"",
             @"appBuildNumber": info[@"CFBundleVersion"] ?: @"",
-            @"sdkVersion": @"clipstack-objc@1"}};
+            @"sdkVersion": @"deskkit-objc@1"}};
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:[host stringByAppendingString:@"/api/v0/events"]]];
     request.HTTPMethod = @"POST";
     request.timeoutInterval = 15;
@@ -43,7 +43,7 @@
     request.HTTPBody = [NSJSONSerialization dataWithJSONObject:@[payload] options:0 error:nil];
     [[NSURLSession.sharedSession dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         if (error || [(NSHTTPURLResponse *)response statusCode] >= 300) {
-            NSLog(@"ClipStack analytics delivery failed");
+            NSLog(@"DeskKit analytics delivery failed");
         }
     }] resume];
 }

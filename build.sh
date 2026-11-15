@@ -1,9 +1,9 @@
 #!/bin/bash
-# Build the menu-bar clipboard queue as ClipStack.app.
+# Build the macOS toolbox as DeskKit.app.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP=".build/ClipStack.app"
+APP=".build/DeskKit.app"
 SDK="$(xcrun --show-sdk-path)"
 SPARKLE="$PWD/.build/sparkle"
 if [[ ! -d "$SPARKLE/Sparkle.framework" ]]; then
@@ -16,25 +16,34 @@ SIGN_ID="${SIGN_ID:-ClipStack Codesign}"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 
-clang \
-  -fobjc-arc \
-  -O2 \
-  -Wall \
-  -isysroot "$SDK" \
-  -arch x86_64 -arch arm64 \
-  -mmacosx-version-min=14.0 \
-  -F "$SPARKLE" -framework Sparkle \
-  -Wl,-rpath,@executable_path/../Frameworks \
-  -framework Cocoa \
-  -framework Carbon \
-  -framework ApplicationServices \
-  -framework ServiceManagement \
-  -o "$APP/Contents/MacOS/ClipStack" \
-  Sources/ClipStack/*.m
+source scripts/swift-toolchain.sh
+
+for arch in x86_64 arm64; do
+  object_dir="$PWD/.build/deskkit-objects/$arch"
+  mkdir -p "$object_dir"
+  objects=()
+  for source_file in Sources/DeskKit/*.m; do
+    object="$object_dir/$(basename "${source_file%.m}").o"
+    clang -c -fobjc-arc -O2 -Wall -isysroot "$SDK" -arch "$arch" \
+      -mmacosx-version-min=14.0 -F "$SPARKLE" "$source_file" -o "$object"
+    objects+=("$object")
+  done
+
+  xcrun swiftc -parse-as-library -O -whole-module-optimization \
+    -sdk "$SDK" -target "$arch-apple-macosx14.0" -module-cache-path "$swift_cache" \
+    ${clang_flags[@]+"${clang_flags[@]}"} \
+    Sources/DeskKit/ScreenshotBridge.swift Sources/DeskKit/Screenshot/*.swift "${objects[@]}" \
+    -F "$SPARKLE" -framework Sparkle -framework QuartzCore -framework Carbon \
+    -framework ApplicationServices -framework ServiceManagement \
+    -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
+    -o "$object_dir/DeskKit"
+done
+xcrun lipo -create .build/deskkit-objects/{x86_64,arm64}/DeskKit \
+  -output "$APP/Contents/MacOS/DeskKit"
 
 cp Info.plist "$APP/Contents/Info.plist"
 mkdir -p "$APP/Contents/Frameworks" "$APP/Contents/Resources"
-cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp Resources/AppIcon.icns Resources/StatusIconTemplate*.png "$APP/Contents/Resources/"
 ditto "$SPARKLE/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 python3 scripts/configure-build.py "$APP/Contents/Info.plist"
 if security find-identity -p codesigning -v | grep -q "$SIGN_ID"; then
@@ -48,12 +57,12 @@ else
   codesign --force --deep --sign - "$APP" >/dev/null
 fi
 
-rm -rf ClipStack.app
-mv "$APP" ClipStack.app
-APP="ClipStack.app"
+rm -rf DeskKit.app
+mv "$APP" DeskKit.app
+APP="DeskKit.app"
 echo "已生成 $APP"
 echo "运行: open $APP"
-echo "快捷键: ⌘⇧C"
+echo "快捷键: ⌘⇧C 打开历史，⌃⌘A 框选截图"
 
 if [[ "${1:-}" == "run" ]]; then
   open "$APP"

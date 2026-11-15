@@ -1,7 +1,7 @@
 #import "AccessibilityTrust.h"
 #import <ApplicationServices/ApplicationServices.h>
 
-BOOL ClipStackAccessibilityTrusted(void) {
+BOOL DeskKitAccessibilityTrusted(void) {
     NSDictionary *silent = @{(__bridge id)kAXTrustedCheckOptionPrompt: @NO};
     if (AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)silent)) return YES;
 
@@ -17,8 +17,8 @@ BOOL ClipStackAccessibilityTrusted(void) {
     return error == kAXErrorSuccess || error == kAXErrorNoValue;
 }
 
-void ClipStackPromptAccessibility(void) {
-    if (ClipStackAccessibilityTrusted()) return;
+void DeskKitPromptAccessibility(void) {
+    if (DeskKitAccessibilityTrusted()) return;
     NSDictionary *options = @{(__bridge id)kAXTrustedCheckOptionPrompt: @YES};
     AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
 }
