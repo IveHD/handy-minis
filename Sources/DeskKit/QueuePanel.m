@@ -1,3 +1,4 @@
+#import "TextActions.h"
 #import "QueuePanel.h"
 #import "AccessibilityTrust.h"
 #import <ApplicationServices/ApplicationServices.h>
@@ -221,11 +222,25 @@
 
 @class QueuePanel;
 
+typedef NS_ENUM(NSInteger, ClipboardSection) {
+    ClipboardSectionHistory,
+    ClipboardSectionPhrases,
+    ClipboardSectionFiles,
+    ClipboardSectionCount,
+};
+
 @interface ClickTableView : NSTableView
 @property (nonatomic, weak) QueuePanel *owner;
 @end
 
 @interface PanelRootView : NSView
+@property (weak) QueuePanel *owner;
+@property NSSegmentedControl *sections;
+@property NSButton *addPhrase;
+@property NSButton *actions;
+@property NSButton *closeShelf;
+@property NSStackView *itemActions;
+@property NSImageView *brandIcon;
 @property NSTextField *titleLabel;
 @property NSTextField *countLabel;
 @property NSTextField *shortcutLabel;
@@ -237,48 +252,83 @@
 @property NSTableView *table;
 @end
 
+@interface QueuePanel (FileDrop)
+- (BOOL)acceptFileDrop:(id<NSDraggingInfo>)info;
+@end
+
 @implementation PanelRootView
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)info {
+    NSPasteboard *pasteboard = info.draggingPasteboard;
+    BOOL fileURLs = [pasteboard canReadObjectForClasses:@[NSURL.class]
+        options:@{NSPasteboardURLReadingFileURLsOnlyKey: @YES}];
+    return info.draggingSource != self.table && (info.draggingSourceOperationMask & NSDragOperationCopy) && fileURLs
+        ? NSDragOperationCopy : NSDragOperationNone;
+}
+
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)info {
+    return [self.owner acceptFileDrop:info];
+}
+
 - (void)layout {
     [super layout];
     NSRect bounds = NSInsetRect(self.bounds, 18, 16);
     CGFloat top = NSMaxY(bounds);
 
+    CGFloat headerCenterY = top - 12.5;
     [self.titleLabel sizeToFit];
-    [self.countLabel sizeToFit];
     NSRect titleFrame = self.titleLabel.frame;
-    titleFrame.origin = NSMakePoint(bounds.origin.x, top - 25);
+    self.brandIcon.frame = NSMakeRect(NSMinX(bounds), headerCenterY - 11, 22, 22);
     titleFrame.size.height = 25;
+    titleFrame.origin = NSMakePoint(NSMaxX(self.brandIcon.frame) + 5, headerCenterY - NSHeight(titleFrame) / 2);
     self.titleLabel.frame = titleFrame;
 
-    NSRect countFrame = self.countLabel.frame;
-    countFrame.origin = NSMakePoint(NSMaxX(titleFrame) + 8, top - 20);
-    countFrame.size.height = 18;
+    NSRect countFrame = NSMakeRect(NSMaxX(titleFrame) + 6, headerCenterY - 9, 28, 18);
     self.countLabel.frame = countFrame;
 
+    [self.sections sizeToFit];
+    NSRect tabFrame = self.sections.frame;
+    tabFrame.origin = NSMakePoint(NSMaxX(countFrame) + 12, headerCenterY - NSHeight(tabFrame) / 2);
+    self.sections.frame = tabFrame;
     [self.shortcutLabel sizeToFit];
     NSRect shortcutFrame = self.shortcutLabel.frame;
     shortcutFrame.size.height = 18;
-    shortcutFrame.origin = NSMakePoint(NSMaxX(bounds) - shortcutFrame.size.width, top - 20);
+    shortcutFrame.origin = NSMakePoint(NSMaxX(bounds) - NSWidth(shortcutFrame), headerCenterY - NSHeight(shortcutFrame) / 2);
     self.shortcutLabel.frame = shortcutFrame;
-    self.searchField.frame = NSMakeRect(bounds.origin.x, top - 25 - 8 - 30, bounds.size.width, 30);
+    CGFloat right = NSMaxX(bounds);
+    for (NSButton *button in @[self.closeShelf, self.addPhrase, self.actions]) {
+        if (button.hidden) continue;
+        [button sizeToFit];
+        CGFloat width = MAX(64, NSWidth(button.frame));
+        button.frame = NSMakeRect(right - width, top - 62, width, 26);
+        right -= width + 8;
+    }
+    self.searchField.frame = NSMakeRect(bounds.origin.x, top - 63, right - bounds.origin.x, 30);
 
     CGFloat cursor = top - 25 - 8 - 30 - 8;
     if (!self.banner.hidden) {
         self.banner.frame = NSMakeRect(bounds.origin.x, cursor - 58, bounds.size.width, 58);
         cursor -= 58 + 8;
     }
+    // Place the toolbar and footer outside the scrolling viewport.
     self.footer.frame = NSMakeRect(bounds.origin.x, bounds.origin.y, bounds.size.width, 16);
     CGFloat listBottom = bounds.origin.y + 16 + 8;
-    self.scrollView.frame = NSMakeRect(bounds.origin.x, listBottom, bounds.size.width, MAX(40, cursor - listBottom));
-    self.emptyLabel.frame = NSInsetRect(self.scrollView.frame, 16, 28);
+    if (!self.itemActions.hidden) {
+        self.itemActions.frame = NSMakeRect(bounds.origin.x, listBottom, bounds.size.width, 28);
+        listBottom += 36;
+    }
+    self.scrollView.frame = NSMakeRect(bounds.origin.x, listBottom, bounds.size.width, MAX(0, cursor - listBottom));
+    self.emptyLabel.frame = NSInsetRect(self.scrollView.frame, 16, MIN(28, NSHeight(self.scrollView.frame) / 2));
     self.emptyLabel.preferredMaxLayoutWidth = MAX(40, self.scrollView.frame.size.width - 32);
-    self.table.tableColumns.firstObject.width = self.scrollView.contentSize.width;
+    NSTableColumn *column = self.table.tableColumns.firstObject;
+    CGFloat listWidth = self.scrollView.contentSize.width;
+    if (column.width != listWidth) column.width = listWidth;
 }
 @end
 
 @interface QueuePanel () <NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate>
 @property ClipboardStore *store;
 @property KeyablePanel *panel;
+@property (weak) PanelRootView *root;
 @property NSTextField *countLabel;
 @property NSTextField *shortcutLabel;
 @property NSSearchField *searchField;
@@ -287,23 +337,35 @@
 @property ClickTableView *table;
 @property NSTextField *emptyLabel;
 @property NSMutableArray<ClipItem *> *rows;
+@property NSMutableArray<ClipItem *> *shelfItems;
+@property (weak) NSButton *addPhraseButton;
+@property (weak) NSButton *actionsButton;
+@property (weak) NSTextField *footer;
+@property (weak) NSButton *closeShelfButton;
+@property (weak) NSStackView *itemActions;
+@property (weak) NSButton *pasteButton;
+@property (weak) NSButton *plainPasteButton;
+@property (weak) NSButton *saveButton;
+@property (weak) NSButton *secondaryButton;
 @property id keyMonitor;
+@property NSSegmentedControl *sections;
 @property BOOL updatingSelection;
 @property NSInteger lastSelectedRow;
 - (void)pasteRow:(NSInteger)row;
 - (void)pasteItem:(ClipItem *)item;
 - (ClipItem *)itemForRow:(NSInteger)row;
+- (NSMenu *)actionMenuForItem:(ClipItem *)item;
+- (BOOL)showingShelf;
+- (void)updateActionButtons;
 @end
 
 @implementation ClickTableView
-- (void)mouseDown:(NSEvent *)event {
-    [super mouseDown:event];
-    ClipItem *item = [self.owner itemForRow:self.clickedRow];
-    if (!item) return;
-    // Wait until this mouse tracking turn ends, or the target app receives the click.
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self.owner pasteItem:item];
-    });
+- (NSMenu *)menuForEvent:(NSEvent *)event {
+    NSInteger row = [self rowAtPoint:[self convertPoint:event.locationInWindow fromView:nil]];
+    ClipItem *item = [self.owner itemForRow:row];
+    if (!item) return nil;
+    [self selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO];
+    return [self.owner actionMenuForItem:item];
 }
 @end
 
@@ -362,10 +424,11 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
 
 - (void)show {
     self.searchField.stringValue = @"";
+    self.sections.selectedSegment = ClipboardSectionHistory;
     [self refreshShortcutTitle];
     [self refreshBanner];
-    [self reloadKeepingSelection:NO];
     [self placeOnMouseScreen];
+    [self changeSection:nil];
     BOOL animate = !NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion;
     self.panel.alphaValue = animate ? 0.78 : 1;
     [self.panel orderFrontRegardless];
@@ -384,9 +447,9 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
 }
 
 - (void)windowDidResignKey:(NSNotification *)notification {
-    // Defer until AppKit finishes the current key-window transition.
+    // The shelf remains available while users gather files in another app.
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (self.panel.isVisible && !self.panel.isKeyWindow) [self hide];
+        if (self.panel.isVisible && !self.panel.isKeyWindow && !self.panel.attachedSheet && ![self showingShelf]) [self hide];
     });
 }
 
@@ -415,6 +478,9 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     self.panel.contentView = effect;
 
     PanelRootView *root = [PanelRootView new];
+    root.owner = self;
+    self.root = root;
+    [root registerForDraggedTypes:@[NSPasteboardTypeFileURL]];
     root.translatesAutoresizingMaskIntoConstraints = NO;
     [effect addSubview:root];
     [NSLayoutConstraint activateConstraints:@[
@@ -424,9 +490,52 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
         [root.bottomAnchor constraintEqualToAnchor:effect.bottomAnchor],
     ]];
 
-    NSTextField *title = MakeLabel(@"最近复制", 19, NSFontWeightSemibold);
+    NSURL *iconURL = [NSBundle.mainBundle URLForResource:@"AppIcon" withExtension:@"icns"];
+    NSImage *icon = iconURL ? [[NSImage alloc] initWithContentsOfURL:iconURL] : NSApp.applicationIconImage;
+    NSImageView *brand = [NSImageView imageViewWithImage:icon];
+    brand.imageScaling = NSImageScaleProportionallyUpOrDown;
+    [brand setAccessibilityElement:NO];
+    root.brandIcon = brand;
+    NSTextField *title = MakeLabel(@"DeskKit", 18, NSFontWeightSemibold);
+    [self.panel setAccessibilityLabel:@"DeskKit 剪贴板"];
+    self.sections = [NSSegmentedControl segmentedControlWithLabels:@[@"历史", @"常用语", @"文件暂存"]
+        trackingMode:NSSegmentSwitchTrackingSelectOne target:self action:@selector(changeSection:)];
+    self.sections.selectedSegment = ClipboardSectionHistory;
+    self.sections.toolTip = @"← → 切换分区";
+    [self.sections setAccessibilityLabel:@"剪贴板分区"];
+    NSButton *addPhrase = [NSButton buttonWithTitle:@"新建常用语" target:self action:@selector(newPhrase:)];
+    root.sections = self.sections;
+    root.addPhrase = addPhrase;
+    self.addPhraseButton = addPhrase;
+    NSButton *actions = [NSButton buttonWithTitle:@"操作 ▾" target:self action:@selector(showActions:)];
+    actions.toolTip = @"⌥↩ 打开选中条目的操作";
+    [actions setAccessibilityLabel:@"选中条目的操作"];
+    root.actions = actions;
+    self.actionsButton = actions;
+    NSButton *closeShelf = [NSButton buttonWithTitle:@"关闭" target:self action:@selector(closeShelf:)];
+    [closeShelf setAccessibilityLabel:@"关闭文件暂存"];
+    root.closeShelf = closeShelf;
+    self.closeShelfButton = closeShelf;
+    closeShelf.hidden = YES;
+    NSButton *paste = [NSButton buttonWithTitle:@"粘贴 ↩" target:self action:@selector(pasteSelection:)];
+    NSButton *plainPaste = [NSButton buttonWithTitle:@"去格式粘贴 ⇧↩" target:self action:@selector(pastePlainSelection:)];
+    NSButton *save = [NSButton buttonWithTitle:@"存为常用语 ⌃↩" target:self action:@selector(saveSelection:)];
+    NSButton *more = [NSButton buttonWithTitle:@"更多 ▾" target:self action:@selector(showActions:)];
+    more.toolTip = @"⌥↩ 打开更多操作";
+    NSStackView *itemActions = [NSStackView stackViewWithViews:@[paste, plainPaste, save, more]];
+    itemActions.spacing = 4;
+    itemActions.distribution = NSStackViewDistributionFillProportionally;
+    itemActions.autoresizingMask = NSViewNotSizable;
+    itemActions.translatesAutoresizingMaskIntoConstraints = YES;
+    root.itemActions = itemActions;
+    self.itemActions = itemActions;
+    self.pasteButton = paste;
+    self.plainPasteButton = plainPaste;
+    self.saveButton = save;
+    self.secondaryButton = more;
     self.countLabel = MakeLabel(@"0", 12, NSFontWeightMedium);
     self.countLabel.textColor = NSColor.secondaryLabelColor;
+    self.countLabel.alignment = NSTextAlignmentCenter;
     NSTextField *shortcut = MakeLabel(@"⌘⇧C", 11, NSFontWeightMedium);
     shortcut.textColor = NSColor.secondaryLabelColor;
     shortcut.alignment = NSTextAlignmentRight;
@@ -443,6 +552,8 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
 
     self.table = [[ClickTableView alloc] initWithFrame:NSZeroRect];
     self.table.owner = self;
+    self.table.target = self;
+    self.table.doubleAction = @selector(pasteClickedRow:);
     NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:@"main"];
     [self.table addTableColumn:column];
     self.table.headerView = nil;
@@ -455,7 +566,9 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     self.table.allowsMultipleSelection = NO;
     self.table.allowsEmptySelection = NO;
     self.table.focusRingType = NSFocusRingTypeNone;
-    self.table.menu = [self makeContextMenu];
+    self.shelfItems = [NSMutableArray array];
+    [self.table setDraggingSourceOperationMask:NSDragOperationCopy forLocal:NO];
+    [self.table setDraggingSourceOperationMask:NSDragOperationNone forLocal:YES];
     if (@available(macOS 11.0, *)) {
         self.table.style = NSTableViewStylePlain;
     }
@@ -465,6 +578,8 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     self.scrollView.drawsBackground = NO;
     self.scrollView.borderType = NSNoBorder;
     self.scrollView.documentView = self.table;
+    self.scrollView.contentView.wantsLayer = YES;
+    self.scrollView.contentView.layer.masksToBounds = YES;
     self.scrollView.translatesAutoresizingMaskIntoConstraints = YES;
 
     self.emptyLabel = [NSTextField wrappingLabelWithString:@"还没有复制内容"];
@@ -474,7 +589,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     self.emptyLabel.translatesAutoresizingMaskIntoConstraints = YES;
     self.emptyLabel.hidden = YES;
 
-    NSTextField *footer = MakeLabel(@"↑↓ 选择      ↩ 粘贴      ⌘↩ 复制      ⌫ 删除      esc 关闭", 11, NSFontWeightRegular);
+    NSTextField *footer = MakeLabel(@"↑↓ 选择    ↩ 粘贴    ⇧↩ 纯文本    ⌘↩ 复制    esc 关闭", 11, NSFontWeightRegular);
     footer.textColor = NSColor.secondaryLabelColor;
     footer.alignment = NSTextAlignmentCenter;
 
@@ -486,8 +601,9 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     root.scrollView = self.scrollView;
     root.emptyLabel = self.emptyLabel;
     root.footer = footer;
+    self.footer = footer;
     root.table = self.table;
-    for (NSView *view in @[title, self.countLabel, shortcut, self.searchField, self.banner, self.scrollView, self.emptyLabel, footer]) {
+    for (NSView *view in @[brand, title, self.countLabel, self.sections, addPhrase, actions, closeShelf, itemActions, shortcut, self.searchField, self.banner, self.scrollView, self.emptyLabel, footer]) {
         [root addSubview:view];
     }
 }
@@ -520,19 +636,41 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     return banner;
 }
 
-- (NSMenu *)makeContextMenu {
+- (NSMenuItem *)addAction:(NSString *)title selector:(SEL)action item:(ClipItem *)item menu:(NSMenu *)menu {
+    NSMenuItem *entry = [menu addItemWithTitle:title action:action keyEquivalent:@""];
+    entry.target = self;
+    entry.representedObject = item;
+    return entry;
+}
+
+- (NSMenu *)actionMenuForItem:(ClipItem *)item {
     NSMenu *menu = [NSMenu new];
-    NSMenuItem *paste = [[NSMenuItem alloc] initWithTitle:@"粘贴" action:@selector(contextPaste:) keyEquivalent:@""];
-    paste.target = self;
-    NSMenuItem *copy = [[NSMenuItem alloc] initWithTitle:@"仅复制" action:@selector(contextCopy:) keyEquivalent:@""];
-    copy.target = self;
-    NSMenuItem *delete = [[NSMenuItem alloc] initWithTitle:@"删除" action:@selector(contextDelete:) keyEquivalent:@""];
-    delete.target = self;
-    [menu addItem:paste];
-    [menu addItem:copy];
-    [menu addItem:[NSMenuItem separatorItem]];
-    [menu addItem:delete];
+    [self addAction:@"粘贴" selector:@selector(contextPaste:) item:item menu:menu];
+    [self addAction:@"仅复制" selector:@selector(contextCopy:) item:item menu:menu];
+    if (item.kind == ClipKindText && item.text.length) {
+        [self addAction:@"粘贴为纯文本" selector:@selector(contextPlainPaste:) item:item menu:menu];
+        NSMenuItem *clean = [menu addItemWithTitle:@"清理文本并粘贴" action:nil keyEquivalent:@""];
+        clean.submenu = [NSMenu new];
+        NSArray *titles = @[@"去掉折行，保留段落", @"清理多余空格", @"合并为一行"];
+        for (NSInteger i = 0; i < (NSInteger)titles.count; i++) {
+            NSMenuItem *entry = [self addAction:titles[i] selector:@selector(contextClean:) item:item menu:clean.submenu];
+            entry.tag = i;
+        }
+        NSString *title = item.phraseName ? @"编辑常用语…" : @"保存为常用语…";
+        [self addAction:title selector:@selector(contextPhrase:) item:item menu:menu];
+    } else if (item.kind == ClipKindFiles && ![self showingShelf]) {
+        [self addAction:@"加入文件暂存" selector:@selector(contextStageFiles:) item:item menu:menu];
+    }
+    [menu addItem:NSMenuItem.separatorItem];
+    [self addAction:[self showingShelf] ? @"移出暂存" : @"删除" selector:@selector(contextDelete:) item:item menu:menu];
     return menu;
+}
+
+- (void)showActions:(id)sender {
+    ClipItem *item = [self itemForRow:self.table.selectedRow];
+    if (!item) return;
+    NSButton *button = self.itemActions.hidden ? self.actionsButton : self.secondaryButton;
+    [[self actionMenuForItem:item] popUpMenuPositioningItem:nil atLocation:NSZeroPoint inView:button];
 }
 
 - (void)placeOnMouseScreen {
@@ -554,9 +692,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
 
 - (void)refreshBanner {
     self.banner.hidden = DeskKitAccessibilityTrusted();
-    self.banner.superview.needsLayout = YES;
-    [self.banner.superview layoutSubtreeIfNeeded];
-    self.panel.contentView.needsLayout = YES;
+    self.root.needsLayout = YES;
 }
 
 - (void)openAccessibility:(id)sender {
@@ -566,7 +702,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
 - (void)setShortcutTitle:(NSString *)title {
     if (title.length == 0) title = @"⌘⇧C";
     self.shortcutLabel.stringValue = title;
-    self.panel.contentView.needsLayout = YES;
+    self.root.needsLayout = YES;
 }
 
 - (void)refreshShortcutTitle {
@@ -584,11 +720,43 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     [self reloadKeepingSelection:NO];
 }
 
+- (BOOL)showingShelf {
+    return self.sections.selectedSegment == ClipboardSectionFiles;
+}
+
+- (NSArray<ClipItem *> *)sectionItems {
+    switch (self.sections.selectedSegment) {
+        case ClipboardSectionPhrases: return self.store.phrases;
+        case ClipboardSectionFiles: return self.shelfItems;
+        default: return self.store.items;
+    }
+}
+
+- (void)changeSection:(id)sender {
+    NSInteger section = self.sections.selectedSegment;
+    BOOL phrases = section == ClipboardSectionPhrases;
+    self.addPhraseButton.hidden = !phrases;
+    BOOL shelf = section == ClipboardSectionFiles;
+    self.itemActions.hidden = shelf;
+    self.actionsButton.hidden = !shelf;
+    self.secondaryButton.title = phrases ? @"仅复制 ⌘↩" : @"更多 ▾";
+    self.secondaryButton.action = phrases ? @selector(copySelection:) : @selector(showActions:);
+    self.secondaryButton.toolTip = phrases ? @"⌘↩ 仅复制" : @"⌥↩ 打开更多操作";
+    self.closeShelfButton.hidden = ![self showingShelf];
+    self.searchField.placeholderString = @[@"搜索复制内容", @"搜索常用语", @"搜索暂存文件"][section];
+    self.footer.stringValue = shelf
+        ? @"←→ 切换    ↑↓ 选择    拖入或拖出文件    Esc 关闭"
+        : (phrases ? @"←→ 切换    ↑↓ 选择    Esc 关闭" : @"←→ 切换    ↑↓ 选择    ⌘↩ 仅复制    Esc 关闭");
+    self.searchField.stringValue = @"";
+    [self reloadKeepingSelection:NO];
+    [self.panel makeFirstResponder:self.searchField];
+}
+
 - (NSArray<ClipItem *> *)filteredItems {
     NSString *query = [self.searchField.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (query.length == 0) return self.store.items;
+    if (query.length == 0) return [self sectionItems];
     NSMutableArray<ClipItem *> *matched = [NSMutableArray array];
-    for (ClipItem *item in self.store.items) {
+    for (ClipItem *item in [self sectionItems]) {
         if ([item matchesQuery:query]) [matched addObject:item];
     }
     return matched;
@@ -598,17 +766,20 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     NSInteger previous = keep ? self.table.selectedRow : 0;
     ClipItem *selectedItem = keep ? [self itemForRow:previous] : nil;
     self.updatingSelection = YES;
-    [self.rows removeAllObjects];
-    [self.rows addObjectsFromArray:[self filteredItems]];
+    self.root.needsLayout = YES;
+    [self.panel.contentView layoutSubtreeIfNeeded];
+    [self.rows setArray:[self filteredItems]];
     [self.table reloadData];
-    self.countLabel.stringValue = [NSString stringWithFormat:@"%lu", (unsigned long)self.store.items.count];
-    [self.countLabel sizeToFit];
+    self.countLabel.stringValue = [NSString stringWithFormat:@"%lu", (unsigned long)[self sectionItems].count];
     BOOL searching = [self.searchField.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length > 0;
     if (self.rows.count == 0) {
         self.emptyLabel.hidden = NO;
-        self.emptyLabel.stringValue = (self.store.items.count == 0)
-            ? @"还没有复制内容\n复制文本、图片或文件后，会出现在这里。"
-            : (searching ? @"没有匹配的内容" : @"还没有复制内容");
+        NSArray *emptyMessages = @[
+            @"还没有复制内容\n复制文本、图片或文件后，会出现在这里。",
+            @"还没有常用语\n点「新建常用语」，或在历史里把文本存为常用语。",
+            @"还没有暂存文件\n将文件拖到此处，或复制文件后在历史里点「加入暂存」。",
+        ];
+        self.emptyLabel.stringValue = searching ? @"没有匹配的内容" : emptyMessages[self.sections.selectedSegment];
     } else {
         self.emptyLabel.hidden = YES;
         NSUInteger retainedSelection = selectedItem ? [self.rows indexOfObjectIdenticalTo:selectedItem] : NSNotFound;
@@ -620,7 +791,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     self.lastSelectedRow = -1;
     self.updatingSelection = NO;
     [self updateSelectedRows];
-    self.panel.contentView.needsLayout = YES;
+    self.root.needsLayout = YES;
 }
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
@@ -632,6 +803,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
         case ClipKindText:
             return item.text.length > 0 ? item.text : @"空白文本";
         case ClipKindFiles:
+            if ([self showingShelf]) return item.primaryText;
             return item.filePaths.count > 0 ? [item.filePaths componentsJoinedByString:@"\n"] : item.primaryText;
         case ClipKindImage:
             return item.primaryText;
@@ -667,6 +839,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     cell.indexLabel.stringValue = row < 9 ? [NSString stringWithFormat:@"%ld", (long)row + 1] : @"·";
     cell.indexLabel.textColor = selected ? NSColor.controlAccentColor : NSColor.secondaryLabelColor;
     cell.primaryLabel.stringValue = item.primaryText;
+    cell.toolTip = [self showingShelf] ? item.filePaths.firstObject : nil;
     NSString *secondary = item.secondaryText;
     cell.secondaryLabel.hidden = selected || secondary.length == 0;
     cell.secondaryLabel.stringValue = secondary ?: @"";
@@ -678,7 +851,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     }
     cell.textScroll.hidden = !selected || item.kind == ClipKindImage;
     cell.primaryLabel.hidden = selected && item.kind != ClipKindImage;
-    cell.timeLabel.stringValue = RelativeTime(item.createdAt);
+    cell.timeLabel.stringValue = [self showingShelf] ? @"" : (item.phraseName ?: RelativeTime(item.createdAt));
     NSImage *thumbnail = item.kind == ClipKindImage ? [self.store thumbnailForItem:item] : nil;
     if (thumbnail) {
         cell.iconView.image = thumbnail;
@@ -700,6 +873,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
 - (void)updateSelectedRows {
     if (self.updatingSelection) return;
     NSInteger selected = self.table.selectedRow;
+    [self updateActionButtons];
     if (selected == self.lastSelectedRow) return;
     self.updatingSelection = YES;
     NSMutableIndexSet *rows = [NSMutableIndexSet indexSet];
@@ -747,36 +921,188 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     return self.rows[row];
 }
 
-- (NSInteger)contextRow {
-    return self.table.clickedRow >= 0 ? self.table.clickedRow : self.table.selectedRow;
-}
-
 - (void)pasteRow:(NSInteger)row {
     [self pasteItem:[self itemForRow:row]];
 }
 
+- (void)updateActionButtons {
+    ClipItem *item = [self itemForRow:self.table.selectedRow];
+    BOOL text = item.kind == ClipKindText && item.text.length > 0;
+    BOOL files = item.kind == ClipKindFiles && item.filePaths.count > 0;
+    self.pasteButton.enabled = item != nil;
+    self.plainPasteButton.enabled = text;
+    self.saveButton.title = item.phraseName ? @"编辑常用语 ⌃↩" : (files ? @"加入暂存 ⌃↩" : @"存为常用语 ⌃↩");
+    self.saveButton.enabled = text || files;
+    self.actionsButton.enabled = item != nil;
+    self.secondaryButton.enabled = item != nil;
+}
+
+- (void)pasteSelection:(id)sender {
+    [self pasteRow:self.table.selectedRow];
+}
+
+- (void)copySelection:(id)sender {
+    ClipItem *item = [self itemForRow:self.table.selectedRow];
+    if (item) [self.delegate queuePanel:self didChooseItem:item paste:NO plainText:NO];
+}
+
+- (void)pasteClickedRow:(id)sender {
+    [self pasteRow:self.table.clickedRow];
+}
+
+- (void)pastePlainSelection:(id)sender {
+    ClipItem *item = [self itemForRow:self.table.selectedRow];
+    if (item.kind == ClipKindText && item.text.length) {
+        [self.delegate queuePanel:self didChooseItem:item paste:YES plainText:YES];
+    }
+}
+
+- (void)saveSelection:(id)sender {
+    ClipItem *item = [self itemForRow:self.table.selectedRow];
+    if (item.kind == ClipKindFiles && item.filePaths.count) [self stageItem:item];
+    else if (item.kind == ClipKindText && item.text.length) [self editPhrase:item];
+}
+
+- (void)closeShelf:(id)sender {
+    [self hide];
+}
+
 - (void)pasteItem:(ClipItem *)item {
     if (!item) return;
-    [self.delegate queuePanel:self didChooseItem:item paste:YES];
+    [self.delegate queuePanel:self didChooseItem:item paste:YES plainText:NO];
 }
 
-- (void)contextPaste:(id)sender {
-    [self pasteRow:[self contextRow]];
+- (void)contextPaste:(NSMenuItem *)sender {
+    [self pasteItem:sender.representedObject];
 }
 
-- (void)contextCopy:(id)sender {
-    ClipItem *item = [self itemForRow:[self contextRow]];
-    if (item) [self.delegate queuePanel:self didChooseItem:item paste:NO];
+- (void)contextCopy:(NSMenuItem *)sender {
+    [self.delegate queuePanel:self didChooseItem:sender.representedObject paste:NO plainText:NO];
 }
 
-- (void)contextDelete:(id)sender {
-    [self deleteRow:[self contextRow]];
+- (void)contextPlainPaste:(NSMenuItem *)sender {
+    [self.delegate queuePanel:self didChooseItem:sender.representedObject paste:YES plainText:YES];
 }
 
-- (void)deleteRow:(NSInteger)row {
-    ClipItem *item = [self itemForRow:row];
+- (void)contextClean:(NSMenuItem *)sender {
+    ClipItem *original = sender.representedObject;
+    ClipItem *item = [ClipItem new];
+    item.kind = ClipKindText;
+    item.text = DeskKitTransformText(original.text, sender.tag);
+    if (item.text.length) [self.delegate queuePanel:self didChooseItem:item paste:YES plainText:YES];
+    else NSBeep();
+}
+
+- (void)contextStageFiles:(NSMenuItem *)sender {
+    [self stageItem:sender.representedObject];
+}
+
+- (void)stageItem:(ClipItem *)item {
+    if (![self stagePaths:item.filePaths]) { NSBeep(); return; }
+    self.sections.selectedSegment = ClipboardSectionFiles;
+    [self changeSection:nil];
+}
+
+- (BOOL)stagePaths:(NSArray<NSString *> *)paths {
+    BOOL foundFile = NO;
+    for (NSString *path in paths) {
+        NSString *normalized = path.stringByStandardizingPath;
+        if (!normalized.isAbsolutePath || ![NSFileManager.defaultManager fileExistsAtPath:normalized]) continue;
+        foundFile = YES;
+        if ([self.shelfItems indexOfObjectPassingTest:^BOOL(ClipItem *item, NSUInteger idx, BOOL *stop) {
+            return [item.filePaths.firstObject isEqualToString:normalized];
+        }] != NSNotFound) continue;
+        ClipItem *item = [ClipItem new];
+        item.kind = ClipKindFiles;
+        item.filePaths = @[normalized];
+        item.itemID = NSUUID.UUID.UUIDString;
+        item.createdAt = NSDate.date;
+        [self.shelfItems addObject:item];
+    }
+    return foundFile;
+}
+
+- (BOOL)acceptFileDrop:(id<NSDraggingInfo>)info {
+    NSArray<NSURL *> *urls = [info.draggingPasteboard readObjectsForClasses:@[NSURL.class]
+        options:@{NSPasteboardURLReadingFileURLsOnlyKey: @YES}];
+    NSMutableArray<NSString *> *paths = [NSMutableArray array];
+    for (NSURL *url in urls) if (url.isFileURL && url.path) [paths addObject:url.path];
+    if (![self stagePaths:paths]) return NO;
+    self.sections.selectedSegment = ClipboardSectionFiles;
+    [self changeSection:nil];
+    return YES;
+}
+
+- (id<NSPasteboardWriting>)tableView:(NSTableView *)tableView pasteboardWriterForRow:(NSInteger)row {
+    if (![self showingShelf]) return nil;
+    NSString *path = [self itemForRow:row].filePaths.firstObject;
+    return path && [NSFileManager.defaultManager fileExistsAtPath:path] ? [NSURL fileURLWithPath:path] : nil;
+}
+
+- (void)newPhrase:(id)sender {
+    [self editPhrase:nil];
+}
+
+- (void)contextPhrase:(NSMenuItem *)sender {
+    [self editPhrase:sender.representedObject];
+}
+
+- (void)editPhrase:(ClipItem *)item {
+    if (self.panel.attachedSheet) return;
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = item.phraseName ? @"编辑常用短语" : @"新建常用短语";
+    NSButton *save = [alert addButtonWithTitle:@"保存"];
+    [alert addButtonWithTitle:@"取消"];
+    NSView *form = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 360, 144)];
+    NSTextField *name = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 118, 360, 24)];
+    name.placeholderString = @"短语名称";
+    name.stringValue = item.phraseName ?: (item ? [item.primaryText substringWithRange:
+        [item.primaryText rangeOfComposedCharacterSequencesForRange:NSMakeRange(0, MIN(item.primaryText.length, 40))]] : @"");
+    [name setAccessibilityLabel:@"短语名称"];
+    [form addSubview:name];
+    NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 360, 108)];
+    scroll.borderType = NSBezelBorder;
+    scroll.hasVerticalScroller = YES;
+    NSTextView *body = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, scroll.contentSize.width, 108)];
+    body.richText = NO;
+    body.font = [NSFont systemFontOfSize:13];
+    body.string = item.text ?: @"";
+    body.verticallyResizable = YES;
+    body.autoresizingMask = NSViewWidthSizable;
+    [body setAccessibilityLabel:@"短语内容"];
+    scroll.documentView = body;
+    [form addSubview:scroll];
+    alert.accessoryView = form;
+    alert.window.initialFirstResponder = name;
+    // Keep Return available for adding lines in the phrase.
+    save.keyEquivalent = @"";
+    [alert beginSheetModalForWindow:self.panel completionHandler:^(NSModalResponse response) {
+        if (response != NSAlertFirstButtonReturn) return;
+        if (![self.store savePhrase:item.phraseName ? item : nil name:name.stringValue text:body.string]) {
+            NSAlert *failure = [NSAlert new];
+            failure.messageText = @"无法保存短语";
+            failure.informativeText = @"请输入名称和内容。内容最多可包含 500,000 个字符。";
+            [failure beginSheetModalForWindow:self.panel completionHandler:nil];
+            return;
+        }
+        self.sections.selectedSegment = ClipboardSectionPhrases;
+        self.searchField.stringValue = @"";
+        [self changeSection:nil];
+    }];
+}
+
+- (void)contextDelete:(NSMenuItem *)sender {
+    [self deleteItem:sender.representedObject];
+}
+
+- (void)deleteItem:(ClipItem *)item {
     if (!item) return;
-    [self.delegate queuePanel:self didDeleteItem:item];
+    if ([self.shelfItems containsObject:item]) {
+        [self.shelfItems removeObjectIdenticalTo:item];
+        [self reloadKeepingSelection:YES];
+    } else {
+        [self.delegate queuePanel:self didDeleteItem:item];
+    }
 }
 
 #pragma mark - Keyboard
@@ -785,7 +1111,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     __weak QueuePanel *weakSelf = self;
     self.keyMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
         QueuePanel *panel = weakSelf;
-        if (!panel || !panel.panel.isVisible || !panel.panel.isKeyWindow) return event;
+        if (!panel || !panel.panel.isVisible || !panel.panel.isKeyWindow || panel.panel.attachedSheet) return event;
         return [panel handleKey:event];
     }];
 }
@@ -797,6 +1123,17 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     }
     NSEventModifierFlags flags = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
     switch (event.keyCode) {
+        case 123:
+        case 124: {
+            if (flags & (NSEventModifierFlagCommand | NSEventModifierFlagOption |
+                         NSEventModifierFlagControl | NSEventModifierFlagShift)) return event;
+            NSInteger section = self.sections.selectedSegment + (event.keyCode == 123 ? -1 : 1);
+            if (section >= 0 && section < ClipboardSectionCount) {
+                self.sections.selectedSegment = section;
+                [self changeSection:nil];
+            }
+            return nil;
+        }
         case 53:
             [self hide];
             return nil;
@@ -808,16 +1145,29 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
             return nil;
         case 36:
         case 76: {
+            NSEventModifierFlags modifiers = flags & (NSEventModifierFlagCommand | NSEventModifierFlagOption |
+                NSEventModifierFlagControl | NSEventModifierFlagShift);
+            if (modifiers == NSEventModifierFlagControl) {
+                if (![self showingShelf]) [self saveSelection:nil];
+                return nil;
+            }
+            if (modifiers == NSEventModifierFlagOption) {
+                [self showActions:nil];
+                return nil;
+            }
+            if (modifiers & (NSEventModifierFlagOption | NSEventModifierFlagControl)) return event;
             ClipItem *item = [self itemForRow:self.table.selectedRow];
             if (!item) return nil;
             BOOL copyOnly = (flags & NSEventModifierFlagCommand) != 0;
-            [self.delegate queuePanel:self didChooseItem:item paste:!copyOnly];
+            BOOL plainText = (flags & NSEventModifierFlagShift) != 0;
+            if (plainText && item.kind != ClipKindText) { NSBeep(); return nil; }
+            [self.delegate queuePanel:self didChooseItem:item paste:!copyOnly plainText:plainText];
             return nil;
         }
         case 51: {
             BOOL searchEmpty = self.searchField.stringValue.length == 0;
             if ((flags & NSEventModifierFlagCommand) || searchEmpty) {
-                [self deleteRow:self.table.selectedRow];
+                [self deleteItem:[self itemForRow:self.table.selectedRow]];
                 return nil;
             }
             return event;

@@ -179,6 +179,8 @@ static void OpenAccessibilitySettings(void) {
 @property QueuePanel *panel;
 @property SettingsPanel *settings;
 @property WindowTiling *windowTiling;
+@property NSMenu *layoutMenu;
+@property BOOL layoutOperationPending;
 @property NSStatusItem *statusItem;
 @property NSTimer *timer;
 @property NSInteger lastChangeCount;
@@ -270,12 +272,18 @@ static void OpenAccessibilitySettings(void) {
 - (NSMenu *)buildMenu {
     NSMenu *menu = [NSMenu new];
     menu.delegate = self;
-    NSMenuItem *queue = [menu addItemWithTitle:@"打开队列" action:@selector(showPanel) keyEquivalent:@""];
+    NSMenuItem *queue = [menu addItemWithTitle:@"打开剪贴板" action:@selector(showPanel) keyEquivalent:@""];
     queue.target = self;
     queue.tag = QueueMenuTag;
     NSMenuItem *screenshot = [menu addItemWithTitle:@"框选截图" action:@selector(startScreenshot) keyEquivalent:@""];
     screenshot.target = self;
     screenshot.tag = ScreenshotMenuTag;
+    NSMenuItem *layouts = [menu addItemWithTitle:@"窗口布局" action:nil keyEquivalent:@""];
+    self.layoutMenu = [NSMenu new];
+    self.layoutMenu.delegate = self;
+    self.layoutMenu.autoenablesItems = NO;
+    layouts.submenu = self.layoutMenu;
+    [self menuNeedsUpdate:self.layoutMenu];
     [menu addItemWithTitle:@"设置…" action:@selector(showSettings:) keyEquivalent:@""].target = self;
     if (self.updaterController) {
         [menu addItemWithTitle:@"检查更新…" action:@selector(checkForUpdates:) keyEquivalent:@""].target = self.updaterController;
@@ -309,14 +317,39 @@ static void OpenAccessibilitySettings(void) {
     OpenAccessibilitySettings();
 }
 
+- (void)menuNeedsUpdate:(NSMenu *)menu {
+    if (menu != self.layoutMenu) return;
+    [menu removeAllItems];
+    NSMenuItem *save = [menu addItemWithTitle:@"保存当前布局…" action:@selector(saveWindowLayout:) keyEquivalent:@""];
+    save.target = self;
+    save.enabled = !self.layoutOperationPending;
+    NSArray<NSString *> *names = [self.windowTiling layoutNames];
+    if (!names.count) return;
+    [menu addItem:[NSMenuItem separatorItem]];
+    NSMenu *remove = [NSMenu new];
+    for (NSString *name in names) {
+        NSMenuItem *restore = [menu addItemWithTitle:name action:@selector(restoreWindowLayout:) keyEquivalent:@""];
+        restore.target = self;
+        restore.enabled = !self.layoutOperationPending;
+        NSMenuItem *delete = [remove addItemWithTitle:name action:@selector(deleteWindowLayout:) keyEquivalent:@""];
+        delete.target = self;
+        delete.enabled = !self.layoutOperationPending;
+    }
+    NSMenuItem *delete = [menu addItemWithTitle:@"删除布局" action:nil keyEquivalent:@""];
+    delete.submenu = remove;
+    remove.autoenablesItems = NO;
+}
+
 - (void)menuWillOpen:(NSMenu *)menu {
+    if (menu == self.layoutMenu) return;
+    [self rememberFrontApp];
     NSArray<NSNumber *> *actions = @[@(DeskKitShortcutQueue), @(DeskKitShortcutScreenshot)];
     for (NSNumber *value in actions) {
         DeskKitShortcut action = value.integerValue;
         BOOL queue = action == DeskKitShortcutQueue;
         NSMenuItem *item = [menu itemWithTag:queue ? QueueMenuTag : ScreenshotMenuTag];
         item.hidden = ![self toolIsEnabledForAction:action];
-        NSString *title = queue ? @"打开队列" : @"框选截图";
+        NSString *title = queue ? @"打开剪贴板" : @"框选截图";
         if (_shortcuts[action].reference) {
             title = [NSString stringWithFormat:@"%@  %@", title, [self shortcutTitleForAction:action]];
         }
@@ -329,6 +362,69 @@ static void OpenAccessibilitySettings(void) {
     count.hidden = !queueEnabled;
     count.title = [NSString stringWithFormat:@"已保存 %lu 条", (unsigned long)self.store.items.count];
     [menu itemWithTag:4].hidden = DeskKitAccessibilityTrusted();
+}
+
+- (void)showToolMessage:(NSString *)title detail:(NSString *)detail {
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = title;
+    alert.informativeText = detail;
+    [NSApp activate];
+    [alert runModal];
+}
+
+- (void)saveWindowLayout:(id)sender {
+    if (self.layoutOperationPending || DeskKitScreenshotIsActive()) return;
+    if (!DeskKitAccessibilityTrusted()) { DeskKitPromptAccessibility(); return; }
+
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = @"保存当前窗口布局";
+    alert.informativeText = @"记录当前桌面上可移动窗口的位置和大小。";
+    NSTextField *field = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
+    field.placeholderString = @"布局名称";
+    alert.accessoryView = field;
+    [alert addButtonWithTitle:@"保存"];
+    [alert addButtonWithTitle:@"取消"];
+    alert.window.initialFirstResponder = field;
+    [NSApp activate];
+    if ([alert runModal] != NSAlertFirstButtonReturn) return;
+    NSString *name = [field.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (!name.length) return;
+    if ([[self.windowTiling layoutNames] containsObject:name]) {
+        NSAlert *replace = [NSAlert new];
+        replace.messageText = [NSString stringWithFormat:@"替换布局「%@」？", name];
+        [replace addButtonWithTitle:@"替换"];
+        [replace addButtonWithTitle:@"取消"];
+        if ([replace runModal] != NSAlertFirstButtonReturn) return;
+    }
+    self.layoutOperationPending = YES;
+    [self.windowTiling saveLayoutNamed:name completion:^(NSUInteger count) {
+        self.layoutOperationPending = NO;
+        if (!count) [self showToolMessage:@"未保存窗口布局" detail:@"当前桌面上没有找到可移动和调整大小的窗口。"];
+    }];
+}
+
+- (void)restoreWindowLayout:(NSMenuItem *)sender {
+    if (self.layoutOperationPending || DeskKitScreenshotIsActive()) return;
+    if (!DeskKitAccessibilityTrusted()) { DeskKitPromptAccessibility(); return; }
+
+    self.layoutOperationPending = YES;
+    [self.windowTiling restoreLayoutNamed:sender.title completion:^(NSUInteger restored, NSUInteger total) {
+        self.layoutOperationPending = NO;
+        if (restored == total) return;
+        NSString *detail = [NSString stringWithFormat:@"已恢复 %lu/%lu 个窗口。请在当前桌面打开对应窗口后重试。",
+            (unsigned long)restored, (unsigned long)total];
+        [self showToolMessage:@"部分窗口无法恢复" detail:detail];
+    }];
+}
+
+- (void)deleteWindowLayout:(NSMenuItem *)sender {
+    if (self.layoutOperationPending) return;
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = [NSString stringWithFormat:@"删除布局「%@」？", sender.title];
+    [alert addButtonWithTitle:@"删除"];
+    [alert addButtonWithTitle:@"取消"];
+    [NSApp activate];
+    if ([alert runModal] == NSAlertFirstButtonReturn) [self.windowTiling deleteLayoutNamed:sender.title];
 }
 
 - (BOOL)isPreferenceEnabled:(DeskKitPreference)preference {
@@ -500,6 +596,7 @@ static EventHotKeyRef RegisterShortcut(DeskKitShortcut action, UInt32 code, UInt
                 self.lastChangeCount = NSPasteboard.generalPasteboard.changeCount;
                 [self startMonitoring];
             } else {
+                self.pasteGeneration++;
                 [self.timer invalidate];
                 self.timer = nil;
                 [self.panel hide];
@@ -592,7 +689,6 @@ static EventHotKeyRef RegisterShortcut(DeskKitShortcut action, UInt32 code, UInt
 }
 
 - (void)rememberFrontApp {
-    if (self.panel.isVisible) return;
     NSRunningApplication *front = NSWorkspace.sharedWorkspace.frontmostApplication;
     if (front && !front.terminated && front.processIdentifier != getpid()) {
         self.previousApp = front;
@@ -624,10 +720,11 @@ static EventHotKeyRef RegisterShortcut(DeskKitShortcut action, UInt32 code, UInt
 
 #pragma mark - QueuePanelDelegate
 
-- (void)queuePanel:(QueuePanel *)panel didChooseItem:(ClipItem *)item paste:(BOOL)paste {
+- (void)queuePanel:(QueuePanel *)panel didChooseItem:(ClipItem *)item paste:(BOOL)paste plainText:(BOOL)plainText {
     NSUInteger generation = ++self.pasteGeneration;
-    if (![self.store restoreItem:item]) return;
+    if (![self.store restoreItem:item plainText:plainText]) { NSBeep(); return; }
     if (paste) [Analytics track:@"paste_requested"];
+    [self rememberFrontApp];
     NSRunningApplication *target = self.previousApp;
     if (!target || target.terminated || target.processIdentifier == getpid()) target = nil;
 
@@ -645,7 +742,7 @@ static EventHotKeyRef RegisterShortcut(DeskKitShortcut action, UInt32 code, UInt
     PasteCheck isCurrent = ^BOOL {
         return self.pasteGeneration == generation;
     };
-    if (!isCurrent() || ![self toolIsEnabledForAction:DeskKitShortcutQueue] || target.terminated ||
+    if (!isCurrent() || target.terminated ||
         self.panel.isVisible || NSPasteboard.generalPasteboard.changeCount != change) return;
     pid_t pid = target.processIdentifier;
     if (NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier != pid) {
@@ -660,7 +757,7 @@ static EventHotKeyRef RegisterShortcut(DeskKitShortcut action, UInt32 code, UInt
     // synchronous AX messages, so do that work away from the event loop.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 120 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
         PasteCheck canPaste = ^BOOL {
-            return isCurrent() && [self toolIsEnabledForAction:DeskKitShortcutQueue] && !self.panel.isVisible &&
+            return isCurrent() && !self.panel.isVisible &&
                 !target.terminated && NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier == pid &&
                 NSPasteboard.generalPasteboard.changeCount == change;
         };

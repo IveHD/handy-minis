@@ -186,6 +186,126 @@ static CGRect RestoredFrame(TileDrag *drag, CGSize size, CGPoint cursor, CGRect 
     return CGRectMake(x, y, size.width, size.height);
 }
 
+static NSString *const SavedLayoutsKey = @"SavedWindowLayouts";
+
+static NSString *DisplayKey(NSScreen *screen) {
+    NSNumber *number = screen.deviceDescription[@"NSScreenNumber"];
+    CFUUIDRef uuid = CGDisplayCreateUUIDFromDisplayID(number.unsignedIntValue);
+    if (!uuid) return number.stringValue ?: @"";
+    NSString *key = CFBridgingRelease(CFUUIDCreateString(NULL, uuid));
+    CFRelease(uuid);
+    return key;
+}
+
+static NSDictionary<NSString *, NSValue *> *LayoutScreens(NSString **primaryKey) {
+    NSArray<NSScreen *> *screens = NSScreen.screens;
+    if (!screens.count) return @{};
+    NSScreen *primary = screens.firstObject;
+    CGFloat top = NSMaxY(primary.frame);
+    *primaryKey = DisplayKey(primary);
+    NSMutableDictionary *frames = [NSMutableDictionary dictionary];
+    for (NSScreen *screen in screens) {
+        NSRect visible = screen.visibleFrame;
+        CGRect frame = CGRectMake(NSMinX(visible), top - NSMaxY(visible), NSWidth(visible), NSHeight(visible));
+        if (!CGRectIsEmpty(frame)) frames[DisplayKey(screen)] = [NSValue valueWithRect:NSRectFromCGRect(frame)];
+    }
+    return frames;
+}
+
+static NSString *ScreenForLayoutFrame(CGRect frame, NSDictionary<NSString *, NSValue *> *screens, NSString *fallback) {
+    NSString *best = fallback;
+    CGFloat largest = 0;
+    for (NSString *key in screens) {
+        CGRect overlap = CGRectIntersection(frame, screens[key].rectValue);
+        if (CGRectIsNull(overlap)) continue;
+        CGFloat area = CGRectGetWidth(overlap) * CGRectGetHeight(overlap);
+        if (area > largest) {
+            largest = area;
+            best = key;
+        }
+    }
+    return best;
+}
+
+@interface LayoutWindow : NSObject
+@property (strong) id element;
+@property (copy) NSString *bundleID;
+@property (copy) NSString *title;
+@property CGRect frame;
+@end
+
+@implementation LayoutWindow
+@end
+
+static NSArray<LayoutWindow *> *VisibleLayoutWindows(void) {
+    NSArray<NSDictionary *> *visible = CFBridgingRelease(CGWindowListCopyWindowInfo(
+        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID));
+    NSMutableDictionary<NSNumber *, NSMutableArray<NSValue *> *> *framesByPID = [NSMutableDictionary dictionary];
+    for (NSDictionary *entry in visible) {
+        if ([entry[(__bridge NSString *)kCGWindowLayer] integerValue] != 0) continue;
+        NSNumber *pid = entry[(__bridge NSString *)kCGWindowOwnerPID];
+        CGRect frame;
+        if (pid.intValue <= 0 || pid.intValue == getpid() || !ReadWindowFrame(entry, &frame)) continue;
+        if (!framesByPID[pid]) framesByPID[pid] = [NSMutableArray array];
+        [framesByPID[pid] addObject:[NSValue valueWithRect:NSRectFromCGRect(frame)]];
+    }
+
+    NSMutableArray<LayoutWindow *> *windows = [NSMutableArray array];
+    for (NSNumber *pid in framesByPID) {
+        NSString *bundleID = [NSRunningApplication runningApplicationWithProcessIdentifier:pid.intValue].bundleIdentifier;
+        if (!bundleID.length) continue;
+        AXUIElementRef app = AXUIElementCreateApplication(pid.intValue);
+        AXUIElementSetMessagingTimeout(app, 0.15);
+        NSArray *elements = AXAttribute(app, kAXWindowsAttribute);
+        for (id candidate in elements) {
+            AXUIElementRef window = (__bridge AXUIElementRef)candidate;
+            if (![AXAttribute(window, kAXSubroleAttribute) isEqual:(__bridge NSString *)kAXStandardWindowSubrole] ||
+                [AXAttribute(window, CFSTR("AXFullScreen")) boolValue] ||
+                !AXSettable(window, kAXPositionAttribute) || !AXSettable(window, kAXSizeAttribute)) continue;
+            CGRect frame;
+            if (!AXRect(window, &frame) || CGRectIsEmpty(frame)) continue;
+            BOOL onScreen = NO;
+            for (NSValue *bounds in framesByPID[pid]) {
+                CGRect visibleFrame = bounds.rectValue;
+                if (SameSize(visibleFrame.size, frame.size) &&
+                    hypot(visibleFrame.origin.x - frame.origin.x, visibleFrame.origin.y - frame.origin.y) <= 3) {
+                    onScreen = YES;
+                    break;
+                }
+            }
+            if (!onScreen) continue;
+            LayoutWindow *entry = [LayoutWindow new];
+            entry.element = candidate;
+            entry.bundleID = bundleID;
+            entry.title = AXAttribute(window, kAXTitleAttribute) ?: @"";
+            entry.frame = frame;
+            [windows addObject:entry];
+        }
+        CFRelease(app);
+    }
+    return windows;
+}
+
+static CGRect RestoredLayoutFrame(NSDictionary *entry, CGRect screen) {
+    CGFloat width = MIN(CGRectGetWidth(screen), MAX(1, [entry[@"w"] doubleValue] * CGRectGetWidth(screen)));
+    CGFloat height = MIN(CGRectGetHeight(screen), MAX(1, [entry[@"h"] doubleValue] * CGRectGetHeight(screen)));
+    CGFloat x = CGRectGetMinX(screen) + [entry[@"x"] doubleValue] * CGRectGetWidth(screen);
+    CGFloat y = CGRectGetMinY(screen) + [entry[@"y"] doubleValue] * CGRectGetHeight(screen);
+    return CGRectIntegral(CGRectMake(MAX(CGRectGetMinX(screen), MIN(x, CGRectGetMaxX(screen) - width)),
+        MAX(CGRectGetMinY(screen), MIN(y, CGRectGetMaxY(screen) - height)), width, height));
+}
+
+static BOOL ApplyLayoutFrame(AXUIElementRef window, CGRect target) {
+    CGSize size = target.size;
+    CGPoint position = target.origin;
+    SetAXValue(window, kAXPositionAttribute, kAXValueCGPointType, &position);
+    AXError resize = SetAXValue(window, kAXSizeAttribute, kAXValueCGSizeType, &size);
+    AXError move = SetAXValue(window, kAXPositionAttribute, kAXValueCGPointType, &position);
+    CGRect actual;
+    return move == kAXErrorSuccess && resize == kAXErrorSuccess && AXRect(window, &actual) &&
+        SameSize(actual.size, size) && hypot(actual.origin.x - position.x, actual.origin.y - position.y) <= 3;
+}
+
 @interface TiledWindow : NSObject
 @property (strong) id accessibilityWindow;
 @property CGSize restoredSize;
@@ -248,6 +368,90 @@ static CGRect RestoredFrame(TileDrag *drag, CGSize size, CGPoint cursor, CGRect 
         _accessibilityQueue = dispatch_queue_create("local.handong.ClipStack.window-tiling", DISPATCH_QUEUE_SERIAL);
     }
     return self;
+}
+
+- (NSArray<NSString *> *)layoutNames {
+    NSDictionary *layouts = [NSUserDefaults.standardUserDefaults dictionaryForKey:SavedLayoutsKey];
+    return [layouts.allKeys sortedArrayUsingSelector:@selector(localizedStandardCompare:)] ?: @[];
+}
+
+- (void)saveLayoutNamed:(NSString *)name completion:(void (^)(NSUInteger))completion {
+    NSString *primary = nil;
+    NSDictionary<NSString *, NSValue *> *screens = LayoutScreens(&primary);
+    dispatch_async(self.accessibilityQueue, ^{
+        NSMutableArray *entries = [NSMutableArray array];
+        if (screens.count) {
+            for (LayoutWindow *window in VisibleLayoutWindows()) {
+                CGRect frame = window.frame;
+                NSString *key = ScreenForLayoutFrame(frame, screens, primary);
+                CGRect screen = screens[key].rectValue;
+                [entries addObject:@{@"bundle": window.bundleID, @"title": window.title, @"screen": key,
+                    @"x": @((CGRectGetMinX(frame) - CGRectGetMinX(screen)) / CGRectGetWidth(screen)),
+                    @"y": @((CGRectGetMinY(frame) - CGRectGetMinY(screen)) / CGRectGetHeight(screen)),
+                    @"w": @(CGRectGetWidth(frame) / CGRectGetWidth(screen)),
+                    @"h": @(CGRectGetHeight(frame) / CGRectGetHeight(screen))}];
+            }
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (entries.count) {
+                NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+                NSMutableDictionary *layouts = [[defaults dictionaryForKey:SavedLayoutsKey] mutableCopy] ?: [NSMutableDictionary dictionary];
+                layouts[name] = entries;
+                [defaults setObject:layouts forKey:SavedLayoutsKey];
+            }
+            completion(entries.count);
+        });
+    });
+}
+
+- (void)restoreLayoutNamed:(NSString *)name completion:(void (^)(NSUInteger, NSUInteger))completion {
+    NSArray<NSDictionary *> *entries = [NSUserDefaults.standardUserDefaults dictionaryForKey:SavedLayoutsKey][name];
+    NSString *primary = nil;
+    NSDictionary<NSString *, NSValue *> *screens = LayoutScreens(&primary);
+    [self cancelDrag];
+    dispatch_async(self.accessibilityQueue, ^{
+        NSUInteger restored = 0;
+        if (entries.count && screens.count) {
+            NSMutableArray<LayoutWindow *> *available = [VisibleLayoutWindows() mutableCopy];
+            NSMutableDictionary<NSString *, NSNumber *> *savedCounts = [NSMutableDictionary dictionary];
+            for (NSDictionary *entry in entries) {
+                NSString *bundle = entry[@"bundle"];
+                savedCounts[bundle] = @([savedCounts[bundle] unsignedIntegerValue] + 1);
+            }
+            for (NSDictionary *entry in entries) {
+                NSValue *screen = screens[entry[@"screen"]] ?: screens[primary];
+                CGRect target = RestoredLayoutFrame(entry, screen.rectValue);
+                LayoutWindow *best = nil, *sole = nil;
+                CGFloat distance = CGFLOAT_MAX;
+                NSUInteger matchingApp = 0;
+                for (LayoutWindow *window in available) {
+                    if (![window.bundleID isEqualToString:entry[@"bundle"]]) continue;
+                    matchingApp++;
+                    sole = window;
+                    if (![window.title isEqualToString:entry[@"title"]]) continue;
+                    CGFloat offset = hypot(CGRectGetMidX(window.frame) - CGRectGetMidX(target),
+                                           CGRectGetMidY(window.frame) - CGRectGetMidY(target));
+                    if (offset >= distance) continue;
+                    best = window;
+                    distance = offset;
+                }
+                if (!best && matchingApp == 1 && [savedCounts[entry[@"bundle"]] unsignedIntegerValue] == 1) best = sole;
+                if (!best) continue;
+                [available removeObjectIdenticalTo:best];
+                if (ApplyLayoutFrame((__bridge AXUIElementRef)best.element, target)) restored++;
+            }
+            [self.tiledWindows removeAllObjects];
+            self.tiledWindowIDs = [NSSet set];
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(restored, entries.count); });
+    });
+}
+
+- (void)deleteLayoutNamed:(NSString *)name {
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    NSMutableDictionary *layouts = [[defaults dictionaryForKey:SavedLayoutsKey] mutableCopy];
+    [layouts removeObjectForKey:name];
+    [defaults setObject:layouts ?: @{} forKey:SavedLayoutsKey];
 }
 
 - (void)start {

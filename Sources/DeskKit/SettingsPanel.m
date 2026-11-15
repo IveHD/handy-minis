@@ -76,8 +76,8 @@ static NSString *const ThemeKey = @"AppearanceTheme";
     [stack addArrangedSubview:toolsLabel];
 
     NSArray<NSNumber *> *actions = @[@(DeskKitShortcutQueue), @(DeskKitShortcutScreenshot)];
-    NSArray<NSString *> *titles = @[@"剪贴板历史", @"框选截图"];
-    NSArray<NSString *> *shortcutLabels = @[@"打开复制队列", @"框选截图"];
+    NSArray<NSString *> *titles = @[@"剪贴板", @"框选截图"];
+    NSArray<NSString *> *shortcutLabels = @[@"打开剪贴板", @"框选截图"];
     NSMutableDictionary<NSNumber *, NSButton *> *shortcuts = [NSMutableDictionary dictionary];
     NSMutableArray<NSButton *> *toolButtons = [NSMutableArray array];
     [actions enumerateObjectsUsingBlock:^(NSNumber *action, NSUInteger index, BOOL *stop) {

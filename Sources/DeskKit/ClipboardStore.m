@@ -12,6 +12,11 @@ static BOOL IsImageFilename(NSString *name) {
         [name.pathExtension isEqualToString:@"png"];
 }
 static const NSUInteger kMaxTextLength = 500000;
+static const NSUInteger kMaxTextFormatBytes = 512 * 1024;
+
+static NSArray<NSPasteboardType> *RichTextTypes(void) {
+    return @[NSPasteboardTypeRTF, NSPasteboardTypeHTML];
+}
 
 static NSString *HashData(NSData *data) {
     unsigned char digest[CC_SHA256_DIGEST_LENGTH];
@@ -80,6 +85,7 @@ static NSString *Truncate(NSString *text) {
 - (NSString *)primaryText {
     switch (self.kind) {
         case ClipKindText: {
+            if (self.phraseName.length) return self.phraseName;
             NSString *line = self.textPreviewLines.firstObject;
             return line.length > 0 ? line : @"空白文本";
         }
@@ -127,6 +133,7 @@ static NSString *Truncate(NSString *text) {
 
 @interface ClipboardStore ()
 @property (nonatomic, strong) NSMutableArray<ClipItem *> *mutableItems;
+@property (nonatomic, copy, readwrite) NSArray<ClipItem *> *phrases;
 @property (nonatomic, copy) NSString *directory;
 @property (nonatomic, copy) NSString *imagesDirectory;
 @property (nonatomic, strong) NSISO8601DateFormatter *dateFormatter;
@@ -153,6 +160,7 @@ static NSString *Truncate(NSString *text) {
         _directory = modern;
         _imagesDirectory = [_directory stringByAppendingPathComponent:@"images"];
         _mutableItems = [NSMutableArray array];
+        _phrases = @[];
         _dateFormatter = [NSISO8601DateFormatter new];
         _dateFormatter.formatOptions = NSISO8601DateFormatWithInternetDateTime;
         _thumbnails = [NSCache new];
@@ -178,6 +186,13 @@ static NSString *Truncate(NSString *text) {
     NSFileManager *fm = NSFileManager.defaultManager;
     [fm createDirectoryAtPath:self.directory withIntermediateDirectories:YES attributes:nil error:NULL];
     [fm createDirectoryAtPath:self.imagesDirectory withIntermediateDirectories:YES attributes:nil error:NULL];
+    NSArray *savedPhrases = [NSArray arrayWithContentsOfFile:[self.directory stringByAppendingPathComponent:@"phrases.plist"]];
+    NSMutableArray *phrases = [NSMutableArray array];
+    for (id entry in savedPhrases) {
+        ClipItem *item = [self itemFromJSON:entry];
+        if (item.kind == ClipKindText && item.phraseName.length && item.text.length) [phrases addObject:item];
+    }
+    self.phrases = phrases;
     NSString *path = [self.directory stringByAppendingPathComponent:@"history.json"];
     NSError *error = nil;
     NSData *data = [NSData dataWithContentsOfFile:path options:0 error:&error];
@@ -206,7 +221,37 @@ static NSString *Truncate(NSString *text) {
     [self notify];
 }
 
+- (BOOL)persistPhrases:(NSArray<ClipItem *> *)phrases {
+    NSMutableArray *entries = [NSMutableArray array];
+    for (ClipItem *item in phrases) [entries addObject:[self jsonFromItem:item]];
+    NSString *path = [self.directory stringByAppendingPathComponent:@"phrases.plist"];
+    if (![entries writeToFile:path atomically:YES]) return NO;
+    self.phrases = phrases;
+    [self notify];
+    return YES;
+}
+
+- (BOOL)savePhrase:(ClipItem *)phrase name:(NSString *)name text:(NSString *)text {
+    name = [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (!name.length || ![text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length ||
+        text.length > kMaxTextLength) return NO;
+    NSMutableArray *updated = [self.phrases mutableCopy];
+    NSUInteger index = phrase ? [updated indexOfObjectIdenticalTo:phrase] : NSNotFound;
+    ClipItem *item = [self makeItemOfKind:ClipKindText hash:HashString(text)];
+    item.phraseName = name;
+    item.text = text;
+    if (index == NSNotFound) [updated insertObject:item atIndex:0];
+    else updated[index] = item;
+    return [self persistPhrases:updated];
+}
+
 - (void)deleteItem:(ClipItem *)item {
+    if (item.phraseName) {
+        NSMutableArray *updated = [self.phrases mutableCopy];
+        [updated removeObjectIdenticalTo:item];
+        if (![self persistPhrases:updated]) NSBeep();
+        return;
+    }
     NSMutableArray<ClipItem *> *updated = [self.mutableItems mutableCopy];
     NSIndexSet *indexes = [updated indexesOfObjectsPassingTest:^BOOL(ClipItem *obj, NSUInteger idx, BOOL *stop) {
         return [obj.itemID isEqualToString:item.itemID];
@@ -234,7 +279,8 @@ static NSString *Truncate(NSString *text) {
     NSInteger change = pasteboard.changeCount;
     NSArray<NSURL *> *fileURLs = [self fileURLsFromPasteboard:pasteboard];
     NSString *text = [pasteboard stringForType:NSPasteboardTypeString];
-    if (text.length > kMaxTextLength) text = Truncate(text);
+    BOOL truncated = text.length > kMaxTextLength;
+    if (truncated) text = Truncate(text);
     BOOL hasText = text.length > 0 &&
         [text rangeOfCharacterFromSet:NSCharacterSet.whitespaceAndNewlineCharacterSet.invertedSet].location != NSNotFound;
 
@@ -242,8 +288,21 @@ static NSString *Truncate(NSString *text) {
     NSData *rawImage = nil;
     BOOL originalPNG = NO;
     if (hasText && ![self text:text isFileList:fileURLs]) {
-        fallback = [self makeItemOfKind:ClipKindText hash:HashString([@"text:" stringByAppendingString:text])];
+        NSMutableString *identity = [NSMutableString stringWithFormat:@"text:%@", text];
+        NSMutableDictionary *formats = [NSMutableDictionary dictionary];
+        if (!truncated) {
+            NSArray *available = pasteboard.types;
+            for (NSPasteboardType type in RichTextTypes()) {
+                if (![available containsObject:type]) continue;
+                NSData *data = [pasteboard dataForType:type];
+                if (!data.length || data.length > kMaxTextFormatBytes) continue;
+                formats[type] = data;
+                [identity appendFormat:@":%@:%@", type, HashData(data)];
+            }
+        }
+        fallback = [self makeItemOfKind:ClipKindText hash:HashString(identity)];
         fallback.text = text;
+        fallback.textFormats = formats.count ? formats : nil;
     } else {
         if (fileURLs.count <= 1) {
             rawImage = [pasteboard dataForType:NSPasteboardTypePNG];
@@ -312,14 +371,34 @@ static NSString *Truncate(NSString *text) {
     if (saved) [self notify];
 }
 
-- (BOOL)restoreItem:(ClipItem *)item {
+- (BOOL)copyPlainText:(NSString *)text {
+    if (!text.length) return NO;
     NSPasteboard *pasteboard = NSPasteboard.generalPasteboard;
     [pasteboard clearContents];
+    if (![pasteboard setString:text forType:NSPasteboardTypeString]) return NO;
+    self.suppressedChangeCount = pasteboard.changeCount;
+    return YES;
+}
+
+- (BOOL)restoreItem:(ClipItem *)item {
+    return [self restoreItem:item plainText:NO];
+}
+
+- (BOOL)restoreItem:(ClipItem *)item plainText:(BOOL)plainText {
+    NSPasteboard *pasteboard = NSPasteboard.generalPasteboard;
     BOOL wrote = NO;
     switch (item.kind) {
         case ClipKindText:
             if (item.text.length == 0) return NO;
-            wrote = [pasteboard setString:item.text forType:NSPasteboardTypeString];
+            if (plainText || !item.textFormats.count) {
+                wrote = [self copyPlainText:item.text];
+            } else {
+                NSPasteboardItem *entry = [NSPasteboardItem new];
+                [entry setString:item.text forType:NSPasteboardTypeString];
+                for (NSPasteboardType type in item.textFormats) [entry setData:item.textFormats[type] forType:type];
+                [pasteboard clearContents];
+                wrote = [pasteboard writeObjects:@[entry]];
+            }
             break;
         case ClipKindFiles: {
             NSMutableArray<NSURL *> *urls = [NSMutableArray array];
@@ -327,6 +406,7 @@ static NSString *Truncate(NSString *text) {
                 [urls addObject:[NSURL fileURLWithPath:path]];
             }
             if (urls.count == 0) return NO;
+            [pasteboard clearContents];
             wrote = [pasteboard writeObjects:urls];
             break;
         }
@@ -335,6 +415,7 @@ static NSString *Truncate(NSString *text) {
             NSString *path = [self.imagesDirectory stringByAppendingPathComponent:item.imageFile];
             NSImage *image = [[NSImage alloc] initWithContentsOfFile:path];
             if (!image) return NO;
+            [pasteboard clearContents];
             wrote = [pasteboard writeObjects:@[image]];
             break;
         }
@@ -445,6 +526,14 @@ static NSString *Truncate(NSString *text) {
         @"contentHash": item.contentHash ?: @"",
     } mutableCopy];
     if (item.text) json[@"text"] = item.text;
+    if (item.phraseName) json[@"phraseName"] = item.phraseName;
+    if (item.textFormats.count) {
+        NSMutableDictionary *formats = [NSMutableDictionary dictionary];
+        for (NSPasteboardType type in item.textFormats) {
+            formats[type] = [item.textFormats[type] base64EncodedStringWithOptions:0];
+        }
+        json[@"textFormats"] = formats;
+    }
     if (item.filePaths) json[@"filePaths"] = item.filePaths;
     if (item.imageFile) json[@"imageFile"] = item.imageFile;
     if (item.pixelWidth > 0) json[@"pixelWidth"] = @(item.pixelWidth);
@@ -466,6 +555,17 @@ static NSString *Truncate(NSString *text) {
     item.createdAt = [date isKindOfClass:[NSString class]] ? [self.dateFormatter dateFromString:date] : [NSDate date];
     if (!item.createdAt) item.createdAt = [NSDate date];
     if ([json[@"text"] isKindOfClass:[NSString class]]) item.text = json[@"text"];
+    if ([json[@"phraseName"] isKindOfClass:[NSString class]]) item.phraseName = json[@"phraseName"];
+    if ([json[@"textFormats"] isKindOfClass:[NSDictionary class]]) {
+        NSMutableDictionary *formats = [NSMutableDictionary dictionary];
+        for (NSPasteboardType type in RichTextTypes()) {
+            id encoded = json[@"textFormats"][type];
+            if (![encoded isKindOfClass:[NSString class]] || [encoded length] > 4 * ((kMaxTextFormatBytes + 2) / 3)) continue;
+            NSData *data = [[NSData alloc] initWithBase64EncodedString:encoded options:0];
+            if (data.length && data.length <= kMaxTextFormatBytes) formats[type] = data;
+        }
+        if (formats.count) item.textFormats = formats;
+    }
     if ([json[@"imageFile"] isKindOfClass:[NSString class]] && IsImageFilename(json[@"imageFile"])) item.imageFile = json[@"imageFile"];
     if ([json[@"filePaths"] isKindOfClass:[NSArray class]]) item.filePaths = json[@"filePaths"];
     if ([json[@"pixelWidth"] isKindOfClass:[NSNumber class]]) item.pixelWidth = [json[@"pixelWidth"] integerValue];

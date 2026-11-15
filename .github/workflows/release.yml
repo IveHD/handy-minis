@@ -2,7 +2,7 @@ name: Publish release
 on:
   push:
     tags:
-      - 'v1.0.3'
+      - 'v1.0.4'
 permissions:
   contents: write
 concurrency:
@@ -27,9 +27,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > /tmp/release-notes.md <<'NOTES'
-          - 截图支持多显示器、窗口区域预览、丰富标注、可选色实心遮挡和马赛克。
-          - 支持本机中英文 OCR，可直接在截图中选取并复制文字。
-          - 改进剪贴板图片处理、历史列表刷新与截图导出，窗口贴靠预览移除了蓝色描边。
+          - 剪贴板新增「常用语」和「文件暂存」，可保存重复使用的短语，也可拖入和拖出暂存文件。
+          - 支持纯文本粘贴，可在粘贴前清理多余空格和换行。
+          - 从菜单栏保存、恢复和删除窗口布局。
 
           适用于 macOS 14 及以上，支持 Apple 芯片和 Intel。安装后通过菜单栏图标使用，⌘⇧C 打开剪贴板历史，⌃⌘A 开始截图。
           此发行包使用临时签名，尚未经过 Apple 公证。
