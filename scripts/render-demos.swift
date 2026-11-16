@@ -12,20 +12,23 @@ func snapshot(_ view: NSView) -> NSImage {
 func text(_ value: String, _ point: NSPoint, _ size: CGFloat = 16) {
     (value as NSString).draw(at: point, withAttributes: [.font: NSFont.systemFont(ofSize: size), .foregroundColor: NSColor.labelColor])
 }
-func gif(_ names: [String], _ frames: [(NSImage,String)], width: Int, height: Int) {
+func gif(_ names: [String], _ frames: [(NSImage,String)], width: Int, height: Int, delays: [Double]? = nil) {
     let url = URL(fileURLWithPath: "docs/demos/\(names[0]).gif")
     let out = CGImageDestinationCreateWithURL(url as CFURL, UTType.gif.identifier as CFString, frames.count, nil)!
     CGImageDestinationSetProperties(out, [kCGImagePropertyGIFDictionary:[kCGImagePropertyGIFLoopCount:0]] as CFDictionary)
+    let captions = frames.reduce(into: [String]()) { if $0.last != $1.1 { $0.append($1.1) } }
+    var step = 0
     for (index, frame) in frames.enumerated() {
+        if index == 0 || frame.1 != frames[index-1].1 { step += 1 }
         let image = NSImage(size:NSSize(width:width,height:height)); image.lockFocus()
         NSColor.windowBackgroundColor.setFill(); NSRect(x:0,y:0,width:width,height:height).fill()
         let scale = min(CGFloat(width-32)/frame.0.size.width,CGFloat(height-86)/frame.0.size.height)
         let size = NSSize(width:frame.0.size.width*scale,height:frame.0.size.height*scale)
         frame.0.draw(in:NSRect(x:(CGFloat(width)-size.width)/2,y:66,width:size.width,height:size.height))
-        text("\(index+1)/\(frames.count)  \(frame.1)",NSPoint(x:18,y:36),15)
+        text("\(step)/\(captions.count)  \(frame.1)",NSPoint(x:18,y:36),15)
         text("HandyMinis · 示例数据 / 实际界面",NSPoint(x:18,y:14),11)
         image.unlockFocus()
-        CGImageDestinationAddImage(out,image.cgImage(forProposedRect:nil,context:nil,hints:nil)!,[kCGImagePropertyGIFDictionary:[kCGImagePropertyGIFDelayTime:2.2]] as CFDictionary)
+        CGImageDestinationAddImage(out,image.cgImage(forProposedRect:nil,context:nil,hints:nil)!,[kCGImagePropertyGIFDictionary:[kCGImagePropertyGIFDelayTime:delays?[index] ?? (index == frames.count-1 ? 1.2 : 0.85)]] as CFDictionary)
     }
     precondition(CGImageDestinationFinalize(out))
     for name in names.dropFirst() { let dest=URL(fileURLWithPath:"docs/demos/\(name).gif");try? FileManager.default.removeItem(at:dest);try! FileManager.default.copyItem(at:url,to:dest) }
@@ -96,20 +99,45 @@ static func main() {
     let single=[NSRect(x:245,y:95,width:430,height:330)]
     let left=[NSRect(x:8,y:8,width:438,height:490)]
     let quarter=[NSRect(x:8,y:263,width:438,height:235)]
-    let tiling:[(NSImage,String)]=[
-        (annotated(single,cursor:NSPoint(x:440,y:415)),"先在设置中开启「拖拽整理窗口」"),
-        (annotated([NSRect(x:110,y:95,width:430,height:330)],cursor:NSPoint(x:305,y:415)),"按住窗口标题栏，向屏幕左边缘拖动"),
-        (annotated([NSRect(x:0,y:95,width:430,height:330)],target:left[0],cursor:NSPoint(x:8,y:415)),"靠近左边缘：预览左半屏区域（蓝色为教学强调）"),
-        (scene(left),"松开鼠标：窗口填满左半屏"),
-        (annotated(single,cursor:NSPoint(x:440,y:415)),"再次按住标题栏，向屏幕左上角拖动"),
-        (annotated([NSRect(x:0,y:180,width:430,height:330)],target:quarter[0],cursor:NSPoint(x:8,y:505)),"靠近左上角：预览四分之一屏幕区域"),
-        (scene(quarter),"松开鼠标：窗口贴靠到左上四分之一屏")]
-    gif(["window-tiling","window-workflow"],tiling,width:900,height:606)
+    var tiling:[(NSImage,String)]=[]
+    var timing:[Double]=[]
+    func hold(_ image:NSImage,_ caption:String,_ delay:Double=0.85) {tiling.append((image,caption));timing.append(delay)}
+    func interpolate(_ a:NSRect,_ b:NSRect,_ t:CGFloat)->NSRect {
+        NSRect(x:a.minX+(b.minX-a.minX)*t,y:a.minY+(b.minY-a.minY)*t,width:a.width+(b.width-a.width)*t,height:a.height+(b.height-a.height)*t)
+    }
+    func motion(_ from:NSRect,_ to:NSRect,_ caption:String, dragging:Bool) {
+        for i in 1...12 {
+            let progress=CGFloat(i)/12
+            let t=progress*progress*(3-2*progress)
+            let rect=interpolate(from,to,t)
+            hold(annotated([rect],cursor:dragging ? NSPoint(x:rect.minX+min(195,rect.width/2),y:rect.maxY-10) : nil),caption,0.04)
+        }
+    }
+    let edge=NSRect(x:-185,y:95,width:430,height:330)
+    let corner=NSRect(x:-185,y:180,width:430,height:330)
+    hold(annotated(single,cursor:NSPoint(x:440,y:415)),"按住标题栏，向左边缘拖动")
+    motion(single[0],edge,"按住标题栏，向左边缘拖动",dragging:true)
+    hold(annotated([edge],target:left[0],cursor:NSPoint(x:10,y:415)),"出现左半屏预览（蓝色为教学强调）",0.65)
+    motion(edge,left[0],"松开鼠标，贴靠左半屏",dragging:false)
+    hold(scene(left),"松开鼠标，贴靠左半屏")
+    motion(left[0],single[0],"再次拖动标题栏，移向左上角",dragging:true)
+    motion(single[0],corner,"再次拖动标题栏，移向左上角",dragging:true)
+    hold(annotated([corner],target:quarter[0],cursor:NSPoint(x:10,y:500)),"出现左上角四分之一屏预览",0.65)
+    motion(corner,quarter[0],"松开鼠标，贴靠四分之一屏",dragging:false)
+    hold(scene(quarter),"松开鼠标，贴靠四分之一屏",1.2)
+    gif(["window-tiling","window-workflow"],tiling,width:900,height:606,delays:timing)
     let alert=NSAlert();alert.icon=NSImage(contentsOfFile:"docs/assets/app-icon.png");alert.messageText="保存当前窗口布局";alert.informativeText="记录当前桌面上可移动窗口的位置和大小。"
     alert.addButton(withTitle:"保存");alert.addButton(withTitle:"取消")
     let field=NSTextField(frame:NSRect(x:0,y:0,width:260,height:24));field.placeholderString="布局名称";field.stringValue="写作工作台";alert.accessoryView=field;alert.layout()
     let dialog=scene(aligned);dialog.lockFocus();let dialogImage=snapshot(alert.window.contentView!);dialogImage.draw(in:NSRect(x:(900-dialogImage.size.width)/2,y:(520-dialogImage.size.height)/2,width:dialogImage.size.width,height:dialogImage.size.height));dialog.unlockFocus()
     gif(["window-save-layout"],[(scene(aligned),"先摆好需要保存的窗口位置与大小"),(annotated(aligned,callout:"选择「保存当前布局…」"),"打开菜单栏 HM → 窗口布局"),(dialog,"输入名称「写作工作台」，点击「保存」"),(annotated(aligned,callout:"已保存：写作工作台"),"记录当前已打开窗口的位置与大小，不保存文件内容")],width:900,height:606)
-    gif(["window-restore-layout","window-layout-demo"],[(scene(scattered),"窗口位置变乱后，先打开对应的应用窗口"),(annotated(scattered,callout:"选择已保存的「写作工作台」"),"菜单栏 HM → 窗口布局 → 写作工作台"),(scene(aligned),"恢复窗口位置与大小，回到并排工作区")],width:900,height:606)
+    var restore:[(NSImage,String)]=[(scene(scattered),"窗口位置变乱后，先打开对应窗口"),(annotated(scattered,callout:"选择已保存的「写作工作台」"),"选择布局：写作工作台")]
+    var restoreTiming:[Double]=[0.85,0.85]
+    for i in 1...12 {
+        let progress=CGFloat(i)/12; let t=progress*progress*(3-2*progress)
+        restore.append((scene(zip(scattered,aligned).map {interpolate($0.0,$0.1,t)}),"恢复窗口位置与大小"));restoreTiming.append(0.04)
+    }
+    restore.append((scene(aligned),"恢复窗口位置与大小"));restoreTiming.append(1.2)
+    gif(["window-restore-layout","window-layout-demo"],restore,width:900,height:606,delays:restoreTiming)
 }
 }
