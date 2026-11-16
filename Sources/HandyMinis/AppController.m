@@ -290,6 +290,7 @@ static void OpenAccessibilitySettings(void) {
     if (self.updaterController) {
         [menu addItemWithTitle:@"检查更新…" action:@selector(checkForUpdates:) keyEquivalent:@""].target = self.updaterController;
     }
+    [menu addItemWithTitle:@"关于 HandyMinis" action:@selector(showAbout:) keyEquivalent:@""].target = self;
     NSMenuItem *access = [[NSMenuItem alloc] initWithTitle:@"授权辅助功能…" action:@selector(openAccessibility:) keyEquivalent:@""];
     access.target = self;
     access.tag = 4;
@@ -666,6 +667,11 @@ static EventHotKeyRef RegisterShortcut(HandyMinisShortcut action, UInt32 code, U
 
 - (void)showSettings:(id)sender {
     [self.settings show];
+}
+
+- (void)showAbout:(id)sender {
+    [NSApp activate];
+    [NSApp orderFrontStandardAboutPanel:sender];
 }
 
 - (BOOL)handleShortcutWhileRecording:(HandyMinisShortcut)action {

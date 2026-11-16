@@ -23,6 +23,8 @@ jobs:
         env:
           APTABASE_APP_KEY: A-US-7430534959
           RELEASE_BUILD: 1
+          UPDATE_FEED_URL: https://ivehd.github.io/handy-minis/appcast.xml
+          SPARKLE_PUBLIC_KEY: Jygnoy6wAtb5QTOC+1BBl91WiJTKChB27SZZbppE8Hw=
         run: APP_VERSION="${GITHUB_REF_NAME#v}" ./build.sh
       - name: Package
         run: scripts/package-dmg.sh

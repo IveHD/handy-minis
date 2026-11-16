@@ -4,9 +4,13 @@
 
 HandyMinis 是一组放在 macOS 菜单栏里的顺手小工具。用它找回复制内容、保存常用语和暂存文件，给截图打码或在本机提取文字，也可以贴靠窗口并保存和恢复布局。
 
-[下载 HandyMinis 1.0.7（Universal DMG）](https://github.com/IveHD/handy-minis/releases/download/v1.0.7/HandyMinis-1.0.7-macOS-Universal.dmg) · [发布说明与 SHA-256 校验文件](https://github.com/IveHD/handy-minis/releases/tag/v1.0.7)
+[下载 HandyMinis 1.0.8（Universal DMG）](https://github.com/IveHD/handy-minis/releases/download/v1.0.8/HandyMinis-1.0.8-macOS-Universal.dmg) · [发布说明与 SHA-256 校验文件](https://github.com/IveHD/handy-minis/releases/tag/v1.0.8)
 
 [HandyMinis 首页](https://ivehd.github.io/handy-minis/) · [截图打码和 OCR 指南](https://ivehd.github.io/handy-minis/guides/mac-screenshot-ocr/) · [剪贴板历史指南](https://ivehd.github.io/handy-minis/guides/mac-clipboard-history/)
+
+## 1.0.8 更新
+
+新增 HM 菜单中的「关于 HandyMinis」，显示版本号与构建号。「检查更新…」可查找后续版本。1.0.7 用户需要手动安装一次 1.0.8。
 
 ## 1.0.7 更新
 
@@ -94,6 +98,18 @@ HandyMinis 是一组放在 macOS 菜单栏里的顺手小工具。用它找回�
 剪贴板历史和 OCR 都在本机处理。发布版的匿名使用统计可在设置中关闭，复制内容、图片和文件路径不会上传。新版本可从 [GitHub Releases](https://github.com/IveHD/handy-minis/releases) 获取。
 
 ## 从源码构建
+
+### 发布应用内更新
+
+正式标签会触发 GitHub Actions，生成带有 Sparkle 更新地址和公钥的 Universal DMG。发布新版本前需递增 `Info.plist` 中的 `CFBundleVersion`。GitHub Release 就绪后，在存有 Sparkle 签名密钥的 Mac 上运行：
+
+```sh
+bash scripts/publish-sparkle-feed.sh v1.0.8
+```
+
+将示例标签替换为实际发行标签。脚本下载正式发行的 DMG、核对 SHA-256，并从本机钥匙串读取私钥来签名，生成 `docs/appcast.xml`。将该文件提交并推送至 GitHub Pages 的发布分支，再从已配置更新地址的旧版检查更新。现有 1.0.7 用户需要手动安装一次新版。现阶段的发行包使用临时签名和 Sparkle 更新包签名。
+
+### 本地构建
 
 ```sh
 scripts/setup-sparkle.sh
