@@ -288,8 +288,9 @@ typedef NS_ENUM(NSInteger, ClipboardSection) {
     [self.titleLabel sizeToFit];
     NSRect titleFrame = self.titleLabel.frame;
     self.brandIcon.frame = NSMakeRect(NSMinX(bounds), headerCenterY - 11, 22, 22);
-    titleFrame.size.height = 25;
-    titleFrame.origin = NSMakePoint(NSMaxX(self.brandIcon.frame) + 5, headerCenterY - NSHeight(titleFrame) / 2);
+    // Use the fitted height and compensate for the font's asymmetric
+    // ascender/descender space to align the visible wordmark with the icon.
+    titleFrame.origin = NSMakePoint(NSMaxX(self.brandIcon.frame) + 5, headerCenterY - NSHeight(titleFrame) / 2 + 1.5);
     self.titleLabel.frame = titleFrame;
 
     NSRect countFrame = NSMakeRect(NSMaxX(titleFrame) + 6, headerCenterY - 9, 28, 18);
