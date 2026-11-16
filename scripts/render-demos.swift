@@ -74,7 +74,42 @@ static func main() {
     }
     let scattered=[NSRect(x:50,y:70,width:430,height:360),NSRect(x:390,y:20,width:440,height:360)]
     let aligned=[NSRect(x:8,y:8,width:438,height:490),NSRect(x:454,y:8,width:438,height:490)]
-    let wf=[(scene(scattered),"窗口位置示意：两个示例窗口待整理"),(scene([aligned[0],scattered[1]]),"拖向屏幕左侧，窗口贴靠左半屏"),(scene(aligned),"另一窗口贴靠右半屏，形成并排工作区"),(scene(aligned),"菜单栏 → 窗口布局 → 保存当前布局…"),(scene(scattered),"工作中移动窗口，布局发生变化"),(scene(aligned),"选择已保存布局，恢复已打开窗口的位置")]
-    gif(["window-layout-demo","window-workflow","window-tiling"],wf,width:900,height:606)
+    func annotated(_ positions:[NSRect], target:NSRect? = nil, cursor:NSPoint? = nil, callout:String? = nil) -> NSImage {
+        let image=scene(positions);image.lockFocus()
+        if let target {
+            NSColor.systemBlue.withAlphaComponent(0.16).setFill()
+            NSBezierPath(roundedRect:target,xRadius:12,yRadius:12).fill()
+            text("松手后贴靠到这里",NSPoint(x:target.minX+18,y:target.midY),18)
+        }
+        if let cursor {
+            let path=NSBezierPath();path.move(to:cursor)
+            for delta in [NSPoint(x:0,y:-26),NSPoint(x:7,y:-19),NSPoint(x:15,y:-30),NSPoint(x:20,y:-27),NSPoint(x:13,y:-16),NSPoint(x:24,y:-16)] {path.line(to:NSPoint(x:cursor.x+delta.x,y:cursor.y+delta.y))}
+            path.close();NSColor.black.setFill();path.fill();NSColor.white.setStroke();path.lineWidth=2;path.stroke()
+        }
+        if let callout {
+            NSColor.white.setFill();NSBezierPath(roundedRect:NSRect(x:190,y:210,width:520,height:105),xRadius:12,yRadius:12).fill()
+            text(callout,NSPoint(x:212,y:257),19)
+            text("菜单栏 HM → 窗口布局",NSPoint(x:212,y:227),15)
+        }
+        image.unlockFocus();return image
+    }
+    let single=[NSRect(x:245,y:95,width:430,height:330)]
+    let left=[NSRect(x:8,y:8,width:438,height:490)]
+    let quarter=[NSRect(x:8,y:263,width:438,height:235)]
+    let tiling:[(NSImage,String)]=[
+        (annotated(single,cursor:NSPoint(x:440,y:415)),"先在设置中开启「拖拽整理窗口」"),
+        (annotated([NSRect(x:110,y:95,width:430,height:330)],cursor:NSPoint(x:305,y:415)),"按住窗口标题栏，向屏幕左边缘拖动"),
+        (annotated([NSRect(x:0,y:95,width:430,height:330)],target:left[0],cursor:NSPoint(x:8,y:415)),"靠近左边缘：预览左半屏区域（蓝色为教学强调）"),
+        (scene(left),"松开鼠标：窗口填满左半屏"),
+        (annotated(single,cursor:NSPoint(x:440,y:415)),"再次按住标题栏，向屏幕左上角拖动"),
+        (annotated([NSRect(x:0,y:180,width:430,height:330)],target:quarter[0],cursor:NSPoint(x:8,y:505)),"靠近左上角：预览四分之一屏幕区域"),
+        (scene(quarter),"松开鼠标：窗口贴靠到左上四分之一屏")]
+    gif(["window-tiling","window-workflow"],tiling,width:900,height:606)
+    let alert=NSAlert();alert.icon=NSImage(contentsOfFile:"docs/assets/app-icon.png");alert.messageText="保存当前窗口布局";alert.informativeText="记录当前桌面上可移动窗口的位置和大小。"
+    alert.addButton(withTitle:"保存");alert.addButton(withTitle:"取消")
+    let field=NSTextField(frame:NSRect(x:0,y:0,width:260,height:24));field.placeholderString="布局名称";field.stringValue="写作工作台";alert.accessoryView=field;alert.layout()
+    let dialog=scene(aligned);dialog.lockFocus();let dialogImage=snapshot(alert.window.contentView!);dialogImage.draw(in:NSRect(x:(900-dialogImage.size.width)/2,y:(520-dialogImage.size.height)/2,width:dialogImage.size.width,height:dialogImage.size.height));dialog.unlockFocus()
+    gif(["window-save-layout"],[(scene(aligned),"先摆好需要保存的窗口位置与大小"),(annotated(aligned,callout:"选择「保存当前布局…」"),"打开菜单栏 HM → 窗口布局"),(dialog,"输入名称「写作工作台」，点击「保存」"),(annotated(aligned,callout:"已保存：写作工作台"),"记录当前已打开窗口的位置与大小，不保存文件内容")],width:900,height:606)
+    gif(["window-restore-layout","window-layout-demo"],[(scene(scattered),"窗口位置变乱后，先打开对应的应用窗口"),(annotated(scattered,callout:"选择已保存的「写作工作台」"),"菜单栏 HM → 窗口布局 → 写作工作台"),(scene(aligned),"恢复窗口位置与大小，回到并排工作区")],width:900,height:606)
 }
 }
