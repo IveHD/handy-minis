@@ -66,7 +66,7 @@ HandyMinis 是一组放在 macOS 菜单栏里的顺手小工具。用它找回�
 - **恢复布局**。在当前桌面打开对应窗口，从「窗口布局」选择之前保存的布局名称。也可在同一菜单删除布局。
 - 贴靠使用当前显示器的可用区域，并受应用窗口最小尺寸限制。
 
-演示 GIF 均为使用示例内容制作的操作示意，实际界面以所安装版本为准。
+剪贴板与截图 GIF 使用实际应用控件和隔离示例数据渲染；截图识别由本机 OCR 完成。窗口布局 GIF 使用原生示例窗口展示位置变化，属于操作示意，不代表桌面实录。
 
 ## 设置与隐私
 
@@ -86,7 +86,7 @@ scripts/package-dmg.sh
 ```
 
 生成 `HandyMinis.app` 和 `dist/HandyMinis-<版本>-macOS-Universal.dmg`。
-`scripts/render-demos.sh` 可重新生成文档中的操作示意 GIF。
+`scripts/render-demos.sh` 可重新生成文档中的演示 GIF。
 
 `scripts/test-clipboard-navigation.sh` 使用隔离的示例记录检查连续选择、搜索、删除后的选中位置、Unicode 边界、缩略图异步加载与视图复用，并输出选择与布局耗时及浅色、深色、设置页截图（`.build/tests/`）。测试不读取用户的剪贴板历史，也不写入系统剪贴板；耗时不包含显示器合成与真实按键输入延迟。
 

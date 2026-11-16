@@ -1,156 +1,80 @@
-// Reproducible, synthetic workflow illustrations. No user screenshots or data.
+// Real application views rendered with isolated sample data. No desktop capture.
 import AppKit
 import ImageIO
 import UniformTypeIdentifiers
 
-let ink = NSColor(srgbRed: 0.075, green: 0.22, blue: 0.18, alpha: 1)
-let muted = NSColor(srgbRed: 0.37, green: 0.44, blue: 0.40, alpha: 1)
-let cream = NSColor(srgbRed: 0.98, green: 0.97, blue: 0.92, alpha: 1)
-let pale = NSColor(srgbRed: 0.87, green: 0.92, blue: 0.84, alpha: 1)
-let lime = NSColor(srgbRed: 0.78, green: 0.92, blue: 0.40, alpha: 1)
-let brand = NSImage(contentsOfFile: "docs/assets/app-icon.png")!
-func box(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ color: NSColor, radius: CGFloat = 12) {
-    color.setFill()
-    NSBezierPath(roundedRect: NSRect(x: x, y: y, width: w, height: h), xRadius: radius, yRadius: radius).fill()
+func snapshot(_ view: NSView) -> NSImage {
+    view.layoutSubtreeIfNeeded()
+    let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
+    view.cacheDisplay(in: view.bounds, to: rep)
+    let result = NSImage(size: view.bounds.size); result.addRepresentation(rep); return result
 }
-func label(_ value: String, _ x: CGFloat, _ y: CGFloat, _ size: CGFloat = 16, color: NSColor = ink, bold: Bool = false) {
-    (value as NSString).draw(at: NSPoint(x: x, y: y), withAttributes: [
-        .font: NSFont.systemFont(ofSize: size, weight: bold ? .semibold : .regular), .foregroundColor: color])
+func text(_ value: String, _ point: NSPoint, _ size: CGFloat = 16) {
+    (value as NSString).draw(at: point, withAttributes: [.font: NSFont.systemFont(ofSize: size), .foregroundColor: NSColor.labelColor])
 }
-func line(_ points: [NSPoint], _ color: NSColor, width: CGFloat = 3) {
-    let path = NSBezierPath(); path.move(to: points[0])
-    for point in points.dropFirst() { path.line(to: point) }
-    path.lineWidth = width; path.lineCapStyle = .round; path.lineJoinStyle = .round
-    color.setStroke();path.stroke()
+func gif(_ names: [String], _ frames: [(NSImage,String)], width: Int, height: Int) {
+    let url = URL(fileURLWithPath: "docs/demos/\(names[0]).gif")
+    let out = CGImageDestinationCreateWithURL(url as CFURL, UTType.gif.identifier as CFString, frames.count, nil)!
+    CGImageDestinationSetProperties(out, [kCGImagePropertyGIFDictionary:[kCGImagePropertyGIFLoopCount:0]] as CFDictionary)
+    for (index, frame) in frames.enumerated() {
+        let image = NSImage(size:NSSize(width:width,height:height)); image.lockFocus()
+        NSColor.windowBackgroundColor.setFill(); NSRect(x:0,y:0,width:width,height:height).fill()
+        let scale = min(CGFloat(width-32)/frame.0.size.width,CGFloat(height-86)/frame.0.size.height)
+        let size = NSSize(width:frame.0.size.width*scale,height:frame.0.size.height*scale)
+        frame.0.draw(in:NSRect(x:(CGFloat(width)-size.width)/2,y:66,width:size.width,height:size.height))
+        text("\(index+1)/\(frames.count)  \(frame.1)",NSPoint(x:18,y:36),15)
+        text("HandyMinis · 示例数据 / 实际界面",NSPoint(x:18,y:14),11)
+        image.unlockFocus()
+        CGImageDestinationAddImage(out,image.cgImage(forProposedRect:nil,context:nil,hints:nil)!,[kCGImagePropertyGIFDictionary:[kCGImagePropertyGIFDelayTime:2.2]] as CFDictionary)
+    }
+    precondition(CGImageDestinationFinalize(out))
+    for name in names.dropFirst() { let dest=URL(fileURLWithPath:"docs/demos/\(name).gif");try? FileManager.default.removeItem(at:dest);try! FileManager.default.copyItem(at:url,to:dest) }
+    print("Rendered \(names.joined(separator:", ")): \(frames.count) frames")
 }
-func cursor(_ x: CGFloat, _ y: CGFloat) {
-    let path = NSBezierPath();path.move(to: NSPoint(x: x, y: y))
-    for p in [(0.0,22.0),(6.0,16.0),(12.0,27.0),(17.0,24.0),(11.0,14.0),(20.0,13.0)] {
-        path.line(to: NSPoint(x: x+p.0, y: y+p.1))
+@main struct Demo {
+static func main() {
+    _ = NSApplication.shared
+    NSApp.appearance = NSAppearance(named:.aqua)
+    let clipboard = [("clipboard-light","⌘⇧C 打开历史"),("clipboard-next","↓ 选择下一条，展开完整预览"),("clipboard-search","输入「会议」筛选历史"),("release-phrases","→ 切换常用语，选择已保存的回复"),("release-files","→ 切换文件暂存，集中管理待用文件")].map { (NSImage(contentsOfFile:".build/tests/\($0.0).png")!,$0.1) }
+    gif(["clipboard-workflow","clipboard"],clipboard,width:540,height:650)
+    let sample = NSImage(size:NSSize(width:900,height:560));sample.lockFocus()
+    NSColor.white.setFill();NSRect(x:0,y:0,width:900,height:560).fill()
+    text("项目发布检查",NSPoint(x:120,y:415),28)
+    text("Release checklist",NSPoint(x:120,y:370),22)
+    text("核对版本与安装包，确认文档链接。",NSPoint(x:120,y:320),22)
+    text("内部编号：HM-DEMO-2026",NSPoint(x:120,y:265),20)
+    text("演示内容，不含个人数据",NSPoint(x:120,y:210),18)
+    sample.unlockFocus()
+    let view = CaptureView(frame:NSRect(x:0,y:0,width:900,height:560),image:sample.cgImage(forProposedRect:nil,context:nil,hints:nil)!)
+    let win = NSWindow(contentRect:view.bounds,styleMask:.borderless,backing:.buffered,defer:false);let canvas=NSView(frame:view.bounds); let backdrop=NSImageView(frame:view.bounds); backdrop.image=sample; backdrop.imageScaling = .scaleAxesIndependently; canvas.addSubview(backdrop); canvas.addSubview(view); win.contentView=canvas
+    func mouse(_ type:NSEvent.EventType,_ x:CGFloat,_ y:CGFloat) -> NSEvent { NSEvent.mouseEvent(with:type,location:NSPoint(x:x,y:560-y),modifierFlags:[],timestamp:0,windowNumber:win.windowNumber,context:nil,eventNumber:0,clickCount:1,pressure:1)! }
+    func drag(_ x:CGFloat,_ y:CGFloat,_ xx:CGFloat,_ yy:CGFloat) { view.mouseDown(with:mouse(.leftMouseDown,x,y));view.mouseDragged(with:mouse(.leftMouseDragged,xx,yy));view.mouseUp(with:mouse(.leftMouseUp,xx,yy)) }
+    func key(_ s:String) {view.keyDown(with:NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:[],timestamp:0,windowNumber:win.windowNumber,context:nil,characters:s,charactersIgnoringModifiers:s,isARepeat:false,keyCode:0)!)}
+    var frames:[(NSImage,String)]=[(snapshot(canvas),"⌃⌘A 进入截图，准备框选")]
+    drag(85,90,800,380);frames.append((snapshot(canvas),"拖动框选内容，显示真实标注工具栏"))
+    key("b");drag(115,273,440,300);frames.append((snapshot(canvas),"B 实心遮挡，隐藏内部编号"))
+    key("a");drag(660,240,525,240);frames.append((snapshot(canvas),"A 添加箭头，指出需要关注的内容"))
+    key("x")
+    let deadline=Date().addingTimeInterval(8)
+    while Date()<deadline {RunLoop.current.run(until:Date().addingTimeInterval(0.1))}
+    frames.append((snapshot(canvas),"X 使用本机 OCR 识别中英文"))
+    drag(121,171,345,185);frames.append((snapshot(canvas),"拖动选择识别文字，可点击「复制文字」"))
+    gif(["screenshot-ocr","screenshot-workflow"],frames,width:900,height:646)
+    // Native demo windows illustrate positioning without moving the user's windows.
+    let desktop=NSView(frame:NSRect(x:0,y:0,width:900,height:520));desktop.wantsLayer=true;desktop.layer?.backgroundColor=NSColor(calibratedWhite:0.91,alpha:1).cgColor
+    var windows:[NSWindow]=[]
+    for (title,body) in [("项目笔记","今日计划\n\n核对发布清单\n整理用户反馈\n更新使用说明"),("发布清单","HandyMinis\n\n✓ 构建通用安装包\n✓ 验证常用语与文件暂存\n✓ 更新文档")]{
+        let w=NSWindow(contentRect:NSRect(x:0,y:0,width:410,height:410),styleMask:[.titled,.closable,.resizable],backing:.buffered,defer:false);w.title=title
+        let t=NSTextView(frame:w.contentView!.bounds);t.string=body;t.font=NSFont.systemFont(ofSize:20);t.textContainerInset=NSSize(width:24,height:24);w.contentView=t;windows.append(w)
     }
-    path.close(); ink.setFill();path.fill();NSColor.white.setStroke();path.lineWidth=1.3;path.stroke()
+    func scene(_ positions:[NSRect])->NSImage {
+        for v in desktop.subviews {v.removeFromSuperview()}
+        for (w,rect) in zip(windows,positions) {w.setContentSize(rect.size);let image=NSImageView(frame:rect);image.image=snapshot(w.contentView!.superview!);image.imageScaling = .scaleAxesIndependently;desktop.addSubview(image)}
+        return snapshot(desktop)
+    }
+    let scattered=[NSRect(x:50,y:70,width:430,height:360),NSRect(x:390,y:20,width:440,height:360)]
+    let aligned=[NSRect(x:8,y:8,width:438,height:490),NSRect(x:454,y:8,width:438,height:490)]
+    let wf=[(scene(scattered),"窗口位置示意：两个示例窗口待整理"),(scene([aligned[0],scattered[1]]),"拖向屏幕左侧，窗口贴靠左半屏"),(scene(aligned),"另一窗口贴靠右半屏，形成并排工作区"),(scene(aligned),"菜单栏 → 窗口布局 → 保存当前布局…"),(scene(scattered),"工作中移动窗口，布局发生变化"),(scene(aligned),"选择已保存布局，恢复已打开窗口的位置")]
+    gif(["window-layout-demo","window-workflow","window-tiling"],wf,width:900,height:606)
 }
-func header(_ title: String, width: CGFloat) {
-    brand.draw(in: NSRect(x: 22, y: 15, width: 34, height: 34))
-    label("HandyMinis", 63, 22, 17, bold: true)
-    label("操作示意", width-89, 24, 12, color: muted)
-    label(title, 28, 68, 24, bold: true)
-}
-func clipboard(_ step: Int, _ width: CGFloat, _ height: CGFloat) {
-    header("复制过的，随时找回来。", width: width)
-    let x: CGFloat = 28, y: CGFloat = 116, w = width-56
-    box(x,y,w,height-190,.white)
-    for (i,t) in ["历史","常用语","文件暂存"].enumerated() {
-        let selected = step == 2 ? 1 : step == 3 ? 2 : 0
-        let tabWidth = (w-32)/3
-        if i == selected { box(x+16+CGFloat(i)*tabWidth,y+16,tabWidth-4,31,pale,radius:7) }
-        label(t,x+24+CGFloat(i)*tabWidth,y+21,14,bold:i==selected)
-    }
-    box(x+16,y+61,w-32,32,cream,radius:7)
-    label(step == 1 ? "搜索：项目" : "搜索文本、图片和文件",x+28,y+68,13,color:muted)
-    let rows: [(String,String)]
-    switch step {
-    case 1: rows=[("项目讨论纪要","明天下午 14:00，同步项目进展。")]
-    case 2: rows=[("常用回复","收到，我会尽快确认后回复。"),("会议通知","请提前准备本周项目进展。")]
-    case 3: rows=[("项目资料.pdf","文件暂存 · 拖到目标应用"),("截图示例.png","文件暂存 · 随时取用")]
-    default: rows=[("项目讨论纪要","明天下午 14:00，同步项目进展。"),("发布清单","检查安装包与版本说明。"),("example.com","刚刚复制的链接")]
-    }
-    for (i,row) in rows.enumerated() {
-        let yy=y+108+CGFloat(i)*64
-        if i==0 {box(x+16,yy,w-32,57,pale,radius:8)}
-        label(row.0,x+30,yy+7,15,bold:true)
-        label(row.1,x+30,yy+31,12,color:muted)
-    }
-    let captions=["⌘⇧C 打开历史，↑ ↓ 选择记录","输入关键词，回车粘贴到原来的应用","⌃↵ 存为常用语，下次直接取用","暂存文件，需要时拖到目标应用"]
-    label(captions[step],28,height-50,14,bold:true)
-}
-func screenshot(_ step: Int, _ width: CGFloat, _ height: CGFloat) {
-    header("截图、遮挡、识别，一次完成。", width:width)
-    box(28,112,width-56,height-190,pale)
-    let x: CGFloat=112,y: CGFloat=144,w=width-224,h: CGFloat=190
-    box(x,y,w,h,.white,radius:6)
-    label("发布检查",x+28,y+22,22,bold:true)
-    label("Release checklist",x+28,y+60,16)
-    label("测试安装，核对 SHA-256",x+28,y+96,17)
-    label("内部编号：HM-2026-01",x+28,y+137,16)
-    if step>=1 {
-        let border=NSBezierPath(rect:NSRect(x:x-5,y:y-5,width:w+10,height:h+10))
-        ink.setStroke();border.lineWidth=2;border.stroke()
-        for xx in [x-5,x+w+1] {for yy in [y-5,y+h+1] {box(xx,yy,5,5,ink,radius:0)}}
-        box(x+20,y+h+17,w-40,32,.white,radius:8)
-        label("V  □  ○  ↗  P  T  M  B  X     复制  保存",x+31,y+h+25,13)
-    }
-    if step>=2 {box(x+26,y+134,260,24,ink,radius:2)}
-    if step>=3 {
-        line([NSPoint(x:x+w-36,y:y+110),NSPoint(x:x+270,y:y+108)],.systemRed)
-        line([NSPoint(x:x+280,y:y+102),NSPoint(x:x+270,y:y+108),NSPoint(x:x+280,y:y+114)],.systemRed)
-    }
-    if step>=4 {
-        box(x+25,y+94,235,25,lime,radius:2)
-        label("测试安装，核对 SHA-256",x+28,y+96,17)
-    }
-    cursor(step==0 ? x-6 : x+w-50,step==0 ? y-6 : y+110)
-    let captions=["⌃⌘A 开始截图，拖动框选区域","确认选区，使用工具栏添加标记","B 实心遮挡；M 马赛克保护敏感内容","A 添加箭头，指出需要关注的位置","X 在本机识别中英文，拖动选择文字","⌘C 复制选中文字，或保存截图 PNG"]
-    label(captions[step],28,height-48,16,bold:true)
-}
-func window(_ x:CGFloat,_ y:CGFloat,_ w:CGFloat,_ h:CGFloat,_ title:String) {
-    box(x,y,w,h,.white,radius:9)
-    box(x,y,w,28,NSColor(white:0.96,alpha:1),radius:9)
-    for (i,c) in [NSColor.systemRed,.systemYellow,.systemGreen].enumerated() {
-        box(x+10+CGFloat(i)*12,y+10,7,7,c,radius:4)
-    }
-    label(title,x+57,y+6,11)
-    label("HandyMinis",x+18,y+48,18,bold:true)
-    label("小工具，每天都用得上。",x+18,y+78,12,color:muted)
-}
-func windows(_ step:Int,_ width:CGFloat,_ height:CGFloat) {
-    header("窗口排好，一键回到工作状态。",width:width)
-    let x:CGFloat=28,y:CGFloat=114,w=width-56,h=height-190
-    box(x,y,w,h,pale)
-    box(x,y,w,24,NSColor.white.withAlphaComponent(0.6),radius:8)
-    label("HM",x+w-43,y+4,12,bold:true)
-    let half=(w-30)/2
-    if step==0 {window(x+90,y+65,300,h-85,"备忘录");cursor(x+240,y+76)}
-    else if step==1 {
-        box(x+10,y+34,half,h-44,lime)
-        window(x+30,y+55,300,h-75,"备忘录");cursor(x+180,y+66)
-    } else if step==2 {window(x+10,y+34,half,h-44,"备忘录")}
-    else if step==5 {
-        window(x+45,y+50,300,h-70,"备忘录");window(x+330,y+75,300,h-95,"浏览器")
-    } else {
-        window(x+10,y+34,half,h-44,"备忘录");window(x+20+half,y+34,half,h-44,"浏览器")
-    }
-    if step==3 || step==4 || step==6 {
-        box(x+w-276,y+24,258,124,ink,radius:10)
-        label("窗口布局",x+w-258,y+38,15,color:cream,bold:true)
-        label(step==3 ? "保存当前布局…" : "✓ 工作台",x+w-258,y+76,15,color:lime,bold:true)
-        label(step==3 ? "记录当前窗口位置与大小" : "恢复已打开窗口的位置与大小",x+w-258,y+110,12,color:cream)
-    }
-    let captions=["拖动窗口标题栏，靠近屏幕边缘","出现半屏预览后松开鼠标","窗口自动贴靠，留出另一半工作空间","HM → 窗口布局 → 保存当前布局…","命名为「工作台」，保存这组窗口位置","窗口移动后，重新打开相应应用窗口","选择「工作台」，恢复已保存的布局","继续工作，常用窗口各归其位"]
-    label(captions[step],28,height-48,16,bold:true)
-}
-func gif(_ name:String,width:Int,height:Int,count:Int,draw:(Int,CGFloat,CGFloat)->Void) throws {
-    let url=URL(fileURLWithPath:"docs/demos/\(name).gif")
-    let destination=CGImageDestinationCreateWithURL(url as CFURL,UTType.gif.identifier as CFString,count,nil)!
-    CGImageDestinationSetProperties(destination,[kCGImagePropertyGIFDictionary:[kCGImagePropertyGIFLoopCount:0]] as CFDictionary)
-    for step in 0..<count {
-        let context=CGContext(data:nil,width:width,height:height,bitsPerComponent:8,bytesPerRow:0,
-            space:CGColorSpace(name:CGColorSpace.sRGB)!,bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue)!
-        context.translateBy(x:0,y:CGFloat(height));context.scaleBy(x:1,y:-1)
-        NSGraphicsContext.saveGraphicsState();NSGraphicsContext.current=NSGraphicsContext(cgContext:context,flipped:true)
-        box(0,0,CGFloat(width),CGFloat(height),cream,radius:0)
-        draw(step,CGFloat(width),CGFloat(height))
-        NSGraphicsContext.restoreGraphicsState()
-        CGImageDestinationAddImage(destination,context.makeImage()!,[kCGImagePropertyGIFDictionary:[kCGImagePropertyGIFDelayTime:1.8]] as CFDictionary)
-    }
-    guard CGImageDestinationFinalize(destination) else {fatalError("Cannot write \(name)")}
-    print("Generated \(name).gif (\(count) illustrative frames)")
-}
-try gif("clipboard-workflow",width:460,height:520,count:4,draw:clipboard)
-try gif("clipboard",width:800,height:520,count:4,draw:clipboard)
-for name in ["screenshot-ocr","screenshot-workflow"] {
-    try gif(name,width:800,height:480,count:6,draw:screenshot)
-}
-for name in ["window-layout-demo","window-workflow","window-tiling"] {
-    try gif(name,width:800,height:480,count:8,draw:windows)
 }

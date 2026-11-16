@@ -215,6 +215,13 @@ int main(int argc, const char *argv[]) {
             [panel changeSection:nil];
             Render(window);
             Snapshot(window.contentView, [@(argv[1]) stringByAppendingString:@"-light.png"]);
+            [panel moveSelection:1]; Render(window);
+            Snapshot(window.contentView, [@(argv[1]) stringByAppendingString:@"-next.png"]);
+            NSSearchField *demoSearch = [panel valueForKey:@"searchField"];
+            demoSearch.stringValue = @"会议"; [panel reloadKeepingSelection:NO]; Render(window);
+            Snapshot(window.contentView, [@(argv[1]) stringByAppendingString:@"-search.png"]);
+            demoSearch.stringValue = @""; [panel reloadKeepingSelection:NO]; Render(window);
+
             [SettingsPanel applyTheme:HandyMinisThemeDark];
             [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:.05]];
             Render(window);
