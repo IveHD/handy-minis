@@ -1,0 +1,14 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>HandyMinis</title>
+        <item>
+            <title>1.0.8</title>
+            <pubDate>Tue, 17 Nov 2026 00:22:13 +0800</pubDate>
+            <sparkle:version>10</sparkle:version>
+            <sparkle:shortVersionString>1.0.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/IveHD/handy-minis/releases/download/v1.0.8/HandyMinis-1.0.8-macOS-Universal.dmg" length="3218363" type="application/octet-stream" sparkle:edSignature="hULn2u5TKMOdRbFs7VNzMuM+vERhyyxzvyBYd1v47rcfpy8txoRRkobRTjGzfX0ogOXH5x6+kYTp4sOq9wYqCA=="/>
+        </item>
+    </channel>
+</rss>
