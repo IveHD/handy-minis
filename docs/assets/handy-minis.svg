@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title">
+<title id="title">HandyMinis HM monogram</title>
+<rect x="64" y="64" width="896" height="896" rx="206" fill="#13382e"/>
+<rect x="79" y="79" width="866" height="866" rx="192" fill="none" stroke="#fff" stroke-opacity=".13" stroke-width="3"/>
+<g fill="none" stroke-width="88" stroke-linecap="round" stroke-linejoin="round">
+<path d="M246 302 L246 722" stroke="#faf7eb"/>
+<path d="M246 512 L460 512" stroke="#faf7eb"/>
+<path d="M460 722 L460 302 L619 512 L778 302 L778 722" stroke="#c7eb66"/>
+</g></svg>

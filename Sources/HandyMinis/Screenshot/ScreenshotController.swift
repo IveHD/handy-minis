@@ -70,7 +70,7 @@ final class ScreenshotController: NSObject {
         busy = true
         previousApp = NSWorkspace.shared.frontmostApplication
         guard CGPreflightScreenCaptureAccess() || CGRequestScreenCaptureAccess() else {
-            let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "DeskKit"
+            let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "HandyMinis"
             defer { busy = false }
             let alert = NSAlert()
             alert.messageText = "请允许 \(appName) 录制屏幕"

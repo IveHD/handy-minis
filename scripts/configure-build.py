@@ -24,6 +24,6 @@ for variable, key in [('APP_VERSION', 'CFBundleShortVersionString'),
                       ('APP_BUILD', 'CFBundleVersion'), ('APTABASE_APP_KEY', 'AptabaseAppKey')]:
     if os.environ.get(variable):
         info[key] = os.environ[variable]
-info['DeskKitReleaseBuild'] = os.environ.get('RELEASE_BUILD') == '1'
+info['HandyMinisReleaseBuild'] = os.environ.get('RELEASE_BUILD') == '1'
 with open(path, 'wb') as stream:
     plistlib.dump(info, stream)

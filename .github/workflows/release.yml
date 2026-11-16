@@ -2,7 +2,7 @@ name: Publish release
 on:
   push:
     tags:
-      - 'v1.0.3'
+      - 'v*'
 permissions:
   contents: write
 concurrency:
@@ -13,6 +13,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate release version
+        run: |
+          test "${GITHUB_REF_NAME#v}" = "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)"
+          test -s "releases/${GITHUB_REF_NAME}.md"
       - name: Install Sparkle
         run: scripts/setup-sparkle.sh
       - name: Build app
@@ -22,16 +26,14 @@ jobs:
         run: APP_VERSION="${GITHUB_REF_NAME#v}" ./build.sh
       - name: Package
         run: scripts/package-dmg.sh
+      - name: Verify release package
+        run: |
+          codesign --verify --deep --strict HandyMinis.app
+          lipo HandyMinis.app/Contents/MacOS/HandyMinis -verify_arch x86_64 arm64
+          hdiutil verify "dist/HandyMinis-${GITHUB_REF_NAME#v}-macOS-Universal.dmg"
+          (cd dist && shasum -a 256 -c SHA256SUMS.txt)
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cat > /tmp/release-notes.md <<'NOTES'
-          - 截图支持多显示器、窗口区域预览、丰富标注、可选色实心遮挡和马赛克。
-          - 支持本机中英文 OCR，可直接在截图中选取并复制文字。
-          - 改进剪贴板图片处理、历史列表刷新与截图导出，窗口贴靠预览移除了蓝色描边。
-
-          适用于 macOS 14 及以上，支持 Apple 芯片和 Intel。安装后通过菜单栏图标使用，⌘⇧C 打开剪贴板历史，⌃⌘A 开始截图。
-          此发行包使用临时签名，尚未经过 Apple 公证。
-          NOTES
-          gh release create "$GITHUB_REF_NAME" "dist/DeskKit-${GITHUB_REF_NAME#v}-macOS-Universal.dmg" dist/SHA256SUMS.txt --verify-tag --title "DeskKit ${GITHUB_REF_NAME#v}" --notes-file /tmp/release-notes.md
+          gh release create "$GITHUB_REF_NAME" "dist/HandyMinis-${GITHUB_REF_NAME#v}-macOS-Universal.dmg" dist/SHA256SUMS.txt --verify-tag --title "HandyMinis ${GITHUB_REF_NAME#v}" --notes-file "releases/${GITHUB_REF_NAME}.md"

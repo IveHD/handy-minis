@@ -1,7 +1,7 @@
 #import "AccessibilityTrust.h"
 #import <ApplicationServices/ApplicationServices.h>
 
-BOOL DeskKitAccessibilityTrusted(void) {
+BOOL HandyMinisAccessibilityTrusted(void) {
     NSDictionary *silent = @{(__bridge id)kAXTrustedCheckOptionPrompt: @NO};
     if (AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)silent)) return YES;
 
@@ -17,8 +17,8 @@ BOOL DeskKitAccessibilityTrusted(void) {
     return error == kAXErrorSuccess || error == kAXErrorNoValue;
 }
 
-void DeskKitPromptAccessibility(void) {
-    if (DeskKitAccessibilityTrusted()) return;
+void HandyMinisPromptAccessibility(void) {
+    if (HandyMinisAccessibilityTrusted()) return;
     NSDictionary *options = @{(__bridge id)kAXTrustedCheckOptionPrompt: @YES};
     AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
 }

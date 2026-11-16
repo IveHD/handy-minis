@@ -1,8 +1,8 @@
 :root {
   color-scheme: light;
   font-family: "Instrument Sans", "PingFang SC", system-ui, sans-serif;
-  background: #f5f7f4;
-  color: #14221c;
+  background: #faf7eb;
+  color: #13382e;
   line-height: 1.75;
 }
 
@@ -50,3 +50,12 @@ img { display: block; max-width: 100%; height: auto; border-radius: .75rem; }
 li + li { margin-top: .45rem; }
 kbd { font-family: system-ui, sans-serif; padding: .05em .3em; background: #e1ebe4; border-radius: .25em; }
 footer { border-top: 1px solid #d7e2da; font-size: .95rem; }
+
+.brand { display: inline-flex; align-items: center; gap: .6rem; letter-spacing: -.035em; }
+.brand img { flex-shrink: 0; border-radius: 0; }
+.hero-brand { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.75rem; }
+.hero-brand img { border-radius: 0; }
+.eyebrow { font-size: .75rem; font-weight: 750; letter-spacing: .12em; }
+h1 { letter-spacing: -.045em; }
+a:focus-visible { outline: 3px solid #769c22; outline-offset: 5px; }
+@media (max-width: 420px) { .hero-brand { gap: .5rem; } .hero-brand img { width: 80px; } }

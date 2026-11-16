@@ -6,7 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 @class QueuePanel;
 
 @protocol QueuePanelDelegate <NSObject>
-- (void)queuePanel:(QueuePanel *)panel didChooseItem:(ClipItem *)item paste:(BOOL)paste;
+- (void)queuePanel:(QueuePanel *)panel didChooseItem:(ClipItem *)item paste:(BOOL)paste plainText:(BOOL)plainText;
 - (void)queuePanel:(QueuePanel *)panel didDeleteItem:(ClipItem *)item;
 - (void)queuePanelDidRequestAccessibility:(QueuePanel *)panel;
 - (NSString *)queuePanelShortcutTitle:(QueuePanel *)panel;

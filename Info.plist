@@ -5,23 +5,24 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>zh-Hans</string>
 	<key>CFBundleDisplayName</key>
-	<string>DeskKit</string>
+	<string>HandyMinis</string>
 	<key>CFBundleExecutable</key>
-	<string>DeskKit</string>
+	<string>HandyMinis</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon.icns</string>
+	<!-- Stable upgrade identity: retain existing preferences and app continuity. -->
 	<key>CFBundleIdentifier</key>
 	<string>local.handong.ClipStack</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>DeskKit</string>
+	<string>HandyMinis</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.3</string>
+	<string>1.0.5</string>
 	<key>CFBundleVersion</key>
-	<string>5</string>
+	<string>7</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>

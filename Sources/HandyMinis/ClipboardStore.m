@@ -12,6 +12,11 @@ static BOOL IsImageFilename(NSString *name) {
         [name.pathExtension isEqualToString:@"png"];
 }
 static const NSUInteger kMaxTextLength = 500000;
+static const NSUInteger kMaxTextFormatBytes = 512 * 1024;
+
+static NSArray<NSPasteboardType> *RichTextTypes(void) {
+    return @[NSPasteboardTypeRTF, NSPasteboardTypeHTML];
+}
 
 static NSString *HashData(NSData *data) {
     unsigned char digest[CC_SHA256_DIGEST_LENGTH];
@@ -62,71 +67,114 @@ static NSString *Truncate(NSString *text) {
     return [text substringToIndex:range.location];
 }
 
+// Limit presentation work, never the stored/copied payload. A composed-character
+// boundary prevents splitting emoji or surrogate pairs at the preview edge.
+static NSString *PreviewPrefix(NSString *text, NSUInteger limit) {
+    if (text.length <= limit) return text ?: @"";
+    NSRange boundary = [text rangeOfComposedCharacterSequenceAtIndex:limit];
+    return [text substringToIndex:boundary.location];
+}
+
 @interface ClipItem ()
-@property (nonatomic, weak) NSString *previewSourceText;
 @property (nonatomic, copy) NSArray<NSString *> *previewLines;
+@property (nonatomic, copy) NSString *cachedSecondary;
+@property (nonatomic, copy) NSString *cachedPreview;
 @end
 
 @implementation ClipItem
 
+- (void)setText:(NSString *)text {
+    _text = [text copy];
+    self.previewLines = nil;
+    self.cachedSecondary = nil;
+    self.cachedPreview = nil;
+}
+
+- (void)setFilePaths:(NSArray<NSString *> *)filePaths {
+    _filePaths = [filePaths copy];
+    self.cachedSecondary = nil;
+    self.cachedPreview = nil;
+}
+
 - (NSArray<NSString *> *)textPreviewLines {
-    if (!self.previewLines || self.previewSourceText != self.text) {
-        self.previewSourceText = self.text;
-        self.previewLines = NonEmptyLines(self.text);
-    }
+    if (!self.previewLines) self.previewLines = NonEmptyLines(PreviewPrefix(self.text, 1024));
     return self.previewLines;
 }
 
 - (NSString *)primaryText {
     switch (self.kind) {
-        case ClipKindText: {
-            NSString *line = self.textPreviewLines.firstObject;
-            return line.length > 0 ? line : @"空白文本";
-        }
+        case ClipKindText:
+            if (self.phraseName.length) return self.phraseName;
+            return self.textPreviewLines.firstObject ?: (self.text.length ? @"文本（开头为空白）" : @"空白文本");
         case ClipKindImage:
-            if (self.pixelWidth > 0 && self.pixelHeight > 0) {
-                return [NSString stringWithFormat:@"图片  %ld×%ld", (long)self.pixelWidth, (long)self.pixelHeight];
-            }
-            return @"图片";
-        case ClipKindFiles: {
-            NSArray<NSString *> *paths = self.filePaths ?: @[];
-            if (paths.count == 1) return paths.firstObject.lastPathComponent;
-            return [NSString stringWithFormat:@"%lu 个文件", (unsigned long)paths.count];
-        }
+            return self.pixelWidth > 0 && self.pixelHeight > 0
+                ? [NSString stringWithFormat:@"图片  %ld×%ld", (long)self.pixelWidth, (long)self.pixelHeight] : @"图片";
+        case ClipKindFiles:
+            return self.filePaths.count == 1 ? self.filePaths.firstObject.lastPathComponent
+                : [NSString stringWithFormat:@"%lu 个文件", (unsigned long)self.filePaths.count];
     }
     return @"";
 }
 
 - (NSString *)secondaryText {
-    switch (self.kind) {
-        case ClipKindText: {
-            NSArray<NSString *> *lines = self.textPreviewLines;
-            if (lines.count < 2) return nil;
-            return [[lines subarrayWithRange:NSMakeRange(1, lines.count - 1)] componentsJoinedByString:@" "];
-        }
-        case ClipKindImage:
-            return nil;
-        case ClipKindFiles: {
-            NSArray<NSString *> *paths = self.filePaths ?: @[];
-            if (paths.count == 1) return [paths.firstObject stringByDeletingLastPathComponent];
-            NSMutableArray<NSString *> *names = [NSMutableArray array];
-            for (NSString *path in paths) [names addObject:path.lastPathComponent];
-            return [names componentsJoinedByString:@"、"];
+    if (self.cachedSecondary) return self.cachedSecondary;
+    if (self.kind == ClipKindText) {
+        NSArray *lines = self.textPreviewLines;
+        self.cachedSecondary = lines.count < 2 ? @"" :
+            [[lines subarrayWithRange:NSMakeRange(1, lines.count - 1)] componentsJoinedByString:@" "];
+    } else if (self.kind == ClipKindFiles) {
+        if (self.filePaths.count == 1) self.cachedSecondary = self.filePaths.firstObject.stringByDeletingLastPathComponent;
+        else {
+            NSMutableString *names = [NSMutableString string];
+            for (NSString *path in self.filePaths) {
+                if (names.length) [names appendString:@"、"];
+                [names appendString:PreviewPrefix(path.lastPathComponent, 256)];
+                if (names.length >= 1024) break;
+            }
+            self.cachedSecondary = names;
         }
     }
-    return nil;
+    return self.cachedSecondary ?: @"";
+}
+
+- (NSString *)displayPreview {
+    if (self.cachedPreview) return self.cachedPreview;
+    if (self.kind == ClipKindText) {
+        NSString *prefix = PreviewPrefix(self.text, 1024);
+        self.cachedPreview = self.text.length > prefix.length
+            ? [prefix stringByAppendingString:@"\n\n… 预览已折叠，可右键查看全文；复制和粘贴保留全文。"]
+            : (prefix.length ? prefix : @"空白文本");
+    } else if (self.kind == ClipKindFiles) {
+        NSMutableString *paths = [NSMutableString string];
+        BOOL folded = NO;
+        for (NSUInteger i = 0; i < self.filePaths.count; i++) {
+            NSString *path = self.filePaths[i];
+            if (paths.length) [paths appendString:@"\n"];
+            [paths appendString:PreviewPrefix(path, 1024)];
+            if (paths.length >= 1024 || path.length > 1024) {
+                folded = paths.length > 1024 || path.length > 1024 || i + 1 < self.filePaths.count;
+                break;
+            }
+        }
+        NSString *prefix = PreviewPrefix(paths, 1024);
+        self.cachedPreview = folded ? [prefix stringByAppendingString:@"\n\n… 预览已折叠，可右键查看全文；复制和粘贴保留全部文件。"] : prefix;
+    } else self.cachedPreview = self.primaryText;
+    return self.cachedPreview;
 }
 
 - (BOOL)matchesQuery:(NSString *)query {
     if (self.text && [self.text rangeOfString:query options:NSCaseInsensitiveSearch].location != NSNotFound) return YES;
-    NSString *blob = [@[self.primaryText, self.secondaryText ?: @"", self.text ?: @""] componentsJoinedByString:@"\n"];
-    return [blob rangeOfString:query options:NSCaseInsensitiveSearch].location != NSNotFound;
+    for (NSString *path in self.filePaths) {
+        if ([path rangeOfString:query options:NSCaseInsensitiveSearch].location != NSNotFound) return YES;
+    }
+    return [self.primaryText rangeOfString:query options:NSCaseInsensitiveSearch].location != NSNotFound;
 }
 
 @end
 
 @interface ClipboardStore ()
 @property (nonatomic, strong) NSMutableArray<ClipItem *> *mutableItems;
+@property (nonatomic, copy, readwrite) NSArray<ClipItem *> *phrases;
 @property (nonatomic, copy) NSString *directory;
 @property (nonatomic, copy) NSString *imagesDirectory;
 @property (nonatomic, strong) NSISO8601DateFormatter *dateFormatter;
@@ -134,6 +182,9 @@ static NSString *Truncate(NSString *text) {
 @property (nonatomic, strong) NSMapTable<ClipItem *, NSData *> *encodedItems;
 @property (nonatomic, copy) NSSet<NSString *> *referencedImages;
 @property (nonatomic, strong) dispatch_queue_t imageQueue;
+@property (nonatomic, strong) dispatch_queue_t thumbnailQueue;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableArray *> *thumbnailRequests;
+@property (nonatomic, strong) NSCache<NSString *, NSNumber *> *missingThumbnails;
 @property (nonatomic) NSUInteger pendingCaptures;
 @property (nonatomic) NSUInteger captureGeneration;
 @end
@@ -141,25 +192,35 @@ static NSString *Truncate(NSString *text) {
 @implementation ClipboardStore
 
 - (instancetype)init {
+    NSString *support = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *modern = [support stringByAppendingPathComponent:@"ClipStack"];
+    NSString *legacy = [support stringByAppendingPathComponent:@"CopyQueue"];
+    NSFileManager *fm = NSFileManager.defaultManager;
+    if (![fm fileExistsAtPath:modern] && [fm fileExistsAtPath:legacy]) {
+        [fm moveItemAtPath:legacy toPath:modern error:nil];
+    }
+    return [self initWithSupportDirectory:modern];
+}
+
+- (instancetype)initWithSupportDirectory:(NSString *)directory {
     self = [super init];
     if (self) {
-        NSString *support = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject;
-        NSString *modern = [support stringByAppendingPathComponent:@"ClipStack"];
-        NSString *legacy = [support stringByAppendingPathComponent:@"CopyQueue"];
-        NSFileManager *fm = NSFileManager.defaultManager;
-        if (![fm fileExistsAtPath:modern] && [fm fileExistsAtPath:legacy]) {
-            [fm moveItemAtPath:legacy toPath:modern error:nil];
-        }
-        _directory = modern;
+        _directory = [directory copy];
         _imagesDirectory = [_directory stringByAppendingPathComponent:@"images"];
         _mutableItems = [NSMutableArray array];
+        _phrases = @[];
         _dateFormatter = [NSISO8601DateFormatter new];
         _dateFormatter.formatOptions = NSISO8601DateFormatWithInternetDateTime;
         _thumbnails = [NSCache new];
-        _thumbnails.totalCostLimit = 12 * 1024 * 1024;
+        _thumbnails.totalCostLimit = 24 * 1024 * 1024;
+        _thumbnailRequests = [NSMutableDictionary dictionary];
+        _missingThumbnails = [NSCache new];
+        _missingThumbnails.countLimit = 80;
+        _thumbnailQueue = dispatch_queue_create("local.handong.HandyMinis.thumbnails",
+            dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0));
         _encodedItems = [NSMapTable weakToStrongObjectsMapTable];
         _referencedImages = [NSSet set];
-        _imageQueue = dispatch_queue_create("local.handong.DeskKit.clipboard-images",
+        _imageQueue = dispatch_queue_create("local.handong.HandyMinis.clipboard-images",
             dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0));
         _suppressedChangeCount = NSNotFound;
     }
@@ -178,6 +239,13 @@ static NSString *Truncate(NSString *text) {
     NSFileManager *fm = NSFileManager.defaultManager;
     [fm createDirectoryAtPath:self.directory withIntermediateDirectories:YES attributes:nil error:NULL];
     [fm createDirectoryAtPath:self.imagesDirectory withIntermediateDirectories:YES attributes:nil error:NULL];
+    NSArray *savedPhrases = [NSArray arrayWithContentsOfFile:[self.directory stringByAppendingPathComponent:@"phrases.plist"]];
+    NSMutableArray *phrases = [NSMutableArray array];
+    for (id entry in savedPhrases) {
+        ClipItem *item = [self itemFromJSON:entry];
+        if (item.kind == ClipKindText && item.phraseName.length && item.text.length) [phrases addObject:item];
+    }
+    self.phrases = phrases;
     NSString *path = [self.directory stringByAppendingPathComponent:@"history.json"];
     NSError *error = nil;
     NSData *data = [NSData dataWithContentsOfFile:path options:0 error:&error];
@@ -206,7 +274,37 @@ static NSString *Truncate(NSString *text) {
     [self notify];
 }
 
+- (BOOL)persistPhrases:(NSArray<ClipItem *> *)phrases {
+    NSMutableArray *entries = [NSMutableArray array];
+    for (ClipItem *item in phrases) [entries addObject:[self jsonFromItem:item]];
+    NSString *path = [self.directory stringByAppendingPathComponent:@"phrases.plist"];
+    if (![entries writeToFile:path atomically:YES]) return NO;
+    self.phrases = phrases;
+    [self notify];
+    return YES;
+}
+
+- (BOOL)savePhrase:(ClipItem *)phrase name:(NSString *)name text:(NSString *)text {
+    name = [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (!name.length || ![text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length ||
+        text.length > kMaxTextLength) return NO;
+    NSMutableArray *updated = [self.phrases mutableCopy];
+    NSUInteger index = phrase ? [updated indexOfObjectIdenticalTo:phrase] : NSNotFound;
+    ClipItem *item = [self makeItemOfKind:ClipKindText hash:HashString(text)];
+    item.phraseName = name;
+    item.text = text;
+    if (index == NSNotFound) [updated insertObject:item atIndex:0];
+    else updated[index] = item;
+    return [self persistPhrases:updated];
+}
+
 - (void)deleteItem:(ClipItem *)item {
+    if (item.phraseName) {
+        NSMutableArray *updated = [self.phrases mutableCopy];
+        [updated removeObjectIdenticalTo:item];
+        if (![self persistPhrases:updated]) NSBeep();
+        return;
+    }
     NSMutableArray<ClipItem *> *updated = [self.mutableItems mutableCopy];
     NSIndexSet *indexes = [updated indexesOfObjectsPassingTest:^BOOL(ClipItem *obj, NSUInteger idx, BOOL *stop) {
         return [obj.itemID isEqualToString:item.itemID];
@@ -234,7 +332,8 @@ static NSString *Truncate(NSString *text) {
     NSInteger change = pasteboard.changeCount;
     NSArray<NSURL *> *fileURLs = [self fileURLsFromPasteboard:pasteboard];
     NSString *text = [pasteboard stringForType:NSPasteboardTypeString];
-    if (text.length > kMaxTextLength) text = Truncate(text);
+    BOOL truncated = text.length > kMaxTextLength;
+    if (truncated) text = Truncate(text);
     BOOL hasText = text.length > 0 &&
         [text rangeOfCharacterFromSet:NSCharacterSet.whitespaceAndNewlineCharacterSet.invertedSet].location != NSNotFound;
 
@@ -242,8 +341,21 @@ static NSString *Truncate(NSString *text) {
     NSData *rawImage = nil;
     BOOL originalPNG = NO;
     if (hasText && ![self text:text isFileList:fileURLs]) {
-        fallback = [self makeItemOfKind:ClipKindText hash:HashString([@"text:" stringByAppendingString:text])];
+        NSMutableString *identity = [NSMutableString stringWithFormat:@"text:%@", text];
+        NSMutableDictionary *formats = [NSMutableDictionary dictionary];
+        if (!truncated) {
+            NSArray *available = pasteboard.types;
+            for (NSPasteboardType type in RichTextTypes()) {
+                if (![available containsObject:type]) continue;
+                NSData *data = [pasteboard dataForType:type];
+                if (!data.length || data.length > kMaxTextFormatBytes) continue;
+                formats[type] = data;
+                [identity appendFormat:@":%@:%@", type, HashData(data)];
+            }
+        }
+        fallback = [self makeItemOfKind:ClipKindText hash:HashString(identity)];
         fallback.text = text;
+        fallback.textFormats = formats.count ? formats : nil;
     } else {
         if (fileURLs.count <= 1) {
             rawImage = [pasteboard dataForType:NSPasteboardTypePNG];
@@ -312,14 +424,38 @@ static NSString *Truncate(NSString *text) {
     if (saved) [self notify];
 }
 
-- (BOOL)restoreItem:(ClipItem *)item {
-    NSPasteboard *pasteboard = NSPasteboard.generalPasteboard;
+- (NSPasteboard *)restorePasteboard {
+    return NSPasteboard.generalPasteboard;
+}
+
+- (BOOL)copyPlainText:(NSString *)text {
+    if (!text.length) return NO;
+    NSPasteboard *pasteboard = [self restorePasteboard];
     [pasteboard clearContents];
+    if (![pasteboard setString:text forType:NSPasteboardTypeString]) return NO;
+    self.suppressedChangeCount = pasteboard.changeCount;
+    return YES;
+}
+
+- (BOOL)restoreItem:(ClipItem *)item {
+    return [self restoreItem:item plainText:NO];
+}
+
+- (BOOL)restoreItem:(ClipItem *)item plainText:(BOOL)plainText {
+    NSPasteboard *pasteboard = [self restorePasteboard];
     BOOL wrote = NO;
     switch (item.kind) {
         case ClipKindText:
             if (item.text.length == 0) return NO;
-            wrote = [pasteboard setString:item.text forType:NSPasteboardTypeString];
+            if (plainText || !item.textFormats.count) {
+                wrote = [self copyPlainText:item.text];
+            } else {
+                NSPasteboardItem *entry = [NSPasteboardItem new];
+                [entry setString:item.text forType:NSPasteboardTypeString];
+                for (NSPasteboardType type in item.textFormats) [entry setData:item.textFormats[type] forType:type];
+                [pasteboard clearContents];
+                wrote = [pasteboard writeObjects:@[entry]];
+            }
             break;
         case ClipKindFiles: {
             NSMutableArray<NSURL *> *urls = [NSMutableArray array];
@@ -327,6 +463,7 @@ static NSString *Truncate(NSString *text) {
                 [urls addObject:[NSURL fileURLWithPath:path]];
             }
             if (urls.count == 0) return NO;
+            [pasteboard clearContents];
             wrote = [pasteboard writeObjects:urls];
             break;
         }
@@ -335,6 +472,7 @@ static NSString *Truncate(NSString *text) {
             NSString *path = [self.imagesDirectory stringByAppendingPathComponent:item.imageFile];
             NSImage *image = [[NSImage alloc] initWithContentsOfFile:path];
             if (!image) return NO;
+            [pasteboard clearContents];
             wrote = [pasteboard writeObjects:@[image]];
             break;
         }
@@ -350,24 +488,50 @@ static NSString *Truncate(NSString *text) {
 }
 
 - (NSImage *)thumbnailForItem:(ClipItem *)item {
-    if (item.imageFile.length == 0) return nil;
-    NSImage *cached = [self.thumbnails objectForKey:item.imageFile];
-    if (cached) return cached;
-    NSString *path = [self.imagesDirectory stringByAppendingPathComponent:item.imageFile];
-    NSURL *url = [NSURL fileURLWithPath:path];
-    CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)url, NULL);
-    if (!source) return nil;
-    NSDictionary *options = @{(__bridge NSString *)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
-                              (__bridge NSString *)kCGImageSourceCreateThumbnailWithTransform: @YES,
-                              (__bridge NSString *)kCGImageSourceThumbnailMaxPixelSize: @640};
-    CGImageRef thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)options);
-    CFRelease(source);
-    if (!thumbnail) return nil;
-    NSImage *image = [[NSImage alloc] initWithCGImage:thumbnail size:NSZeroSize];
-    NSUInteger bytes = CGImageGetBytesPerRow(thumbnail) * CGImageGetHeight(thumbnail);
-    CFRelease(thumbnail);
-    [self.thumbnails setObject:image forKey:item.imageFile cost:bytes];
-    return image;
+    return item.imageFile.length ? [self.thumbnails objectForKey:item.imageFile] : nil;
+}
+
+- (void)requestThumbnailForItem:(ClipItem *)item completion:(void (^)(NSImage *))completion {
+    NSAssert(NSThread.isMainThread, @"Thumbnail requests are serialized on main");
+    NSString *name = item.imageFile;
+    NSImage *cached = [self thumbnailForItem:item];
+    if (!IsImageFilename(name) || cached || [self.missingThumbnails objectForKey:name]) {
+        completion(cached);
+        return;
+    }
+    NSMutableArray *pending = self.thumbnailRequests[name];
+    if (pending) {
+        [pending addObject:[completion copy]];
+        return;
+    }
+    self.thumbnailRequests[name] = [NSMutableArray arrayWithObject:[completion copy]];
+    NSString *path = [self.imagesDirectory stringByAppendingPathComponent:name];
+    NSUInteger generation = self.captureGeneration;
+    dispatch_async(self.thumbnailQueue, ^{
+        @autoreleasepool {
+            // Force decompression here, not when AppKit first draws the image.
+            NSDictionary *sourceOptions = @{(__bridge NSString *)kCGImageSourceShouldCache: @NO};
+            CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)[NSURL fileURLWithPath:path],
+                (__bridge CFDictionaryRef)sourceOptions);
+            NSDictionary *options = @{(__bridge NSString *)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
+                (__bridge NSString *)kCGImageSourceCreateThumbnailWithTransform: @YES,
+                (__bridge NSString *)kCGImageSourceShouldCacheImmediately: @YES,
+                (__bridge NSString *)kCGImageSourceThumbnailMaxPixelSize: @640};
+            CGImageRef thumbnail = source ? CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)options) : NULL;
+            if (source) CFRelease(source);
+            NSUInteger bytes = thumbnail ? CGImageGetBytesPerRow(thumbnail) * CGImageGetHeight(thumbnail) : 0;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NSImage *image = thumbnail ? [[NSImage alloc] initWithCGImage:thumbnail size:NSZeroSize] : nil;
+                if (thumbnail) CGImageRelease(thumbnail);
+                if (generation != self.captureGeneration) image = nil;
+                else if (image) [self.thumbnails setObject:image forKey:name cost:bytes];
+                else [self.missingThumbnails setObject:@YES forKey:name];
+                NSArray *callbacks = [self.thumbnailRequests[name] copy];
+                [self.thumbnailRequests removeObjectForKey:name];
+                for (void (^callback)(NSImage *) in callbacks) callback(image);
+            });
+        }
+    });
 }
 
 #pragma mark - Persistence
@@ -422,7 +586,7 @@ static NSString *Truncate(NSString *text) {
 
     NSString *path = [self.directory stringByAppendingPathComponent:@"history.json"];
     if (![history writeToFile:path atomically:YES]) {
-        fprintf(stderr, "DeskKit 无法保存历史\n");
+        fprintf(stderr, "HandyMinis 无法保存历史\n");
         return NO;
     }
     self.mutableItems = retained;
@@ -445,6 +609,14 @@ static NSString *Truncate(NSString *text) {
         @"contentHash": item.contentHash ?: @"",
     } mutableCopy];
     if (item.text) json[@"text"] = item.text;
+    if (item.phraseName) json[@"phraseName"] = item.phraseName;
+    if (item.textFormats.count) {
+        NSMutableDictionary *formats = [NSMutableDictionary dictionary];
+        for (NSPasteboardType type in item.textFormats) {
+            formats[type] = [item.textFormats[type] base64EncodedStringWithOptions:0];
+        }
+        json[@"textFormats"] = formats;
+    }
     if (item.filePaths) json[@"filePaths"] = item.filePaths;
     if (item.imageFile) json[@"imageFile"] = item.imageFile;
     if (item.pixelWidth > 0) json[@"pixelWidth"] = @(item.pixelWidth);
@@ -466,6 +638,17 @@ static NSString *Truncate(NSString *text) {
     item.createdAt = [date isKindOfClass:[NSString class]] ? [self.dateFormatter dateFromString:date] : [NSDate date];
     if (!item.createdAt) item.createdAt = [NSDate date];
     if ([json[@"text"] isKindOfClass:[NSString class]]) item.text = json[@"text"];
+    if ([json[@"phraseName"] isKindOfClass:[NSString class]]) item.phraseName = json[@"phraseName"];
+    if ([json[@"textFormats"] isKindOfClass:[NSDictionary class]]) {
+        NSMutableDictionary *formats = [NSMutableDictionary dictionary];
+        for (NSPasteboardType type in RichTextTypes()) {
+            id encoded = json[@"textFormats"][type];
+            if (![encoded isKindOfClass:[NSString class]] || [encoded length] > 4 * ((kMaxTextFormatBytes + 2) / 3)) continue;
+            NSData *data = [[NSData alloc] initWithBase64EncodedString:encoded options:0];
+            if (data.length && data.length <= kMaxTextFormatBytes) formats[type] = data;
+        }
+        if (formats.count) item.textFormats = formats;
+    }
     if ([json[@"imageFile"] isKindOfClass:[NSString class]] && IsImageFilename(json[@"imageFile"])) item.imageFile = json[@"imageFile"];
     if ([json[@"filePaths"] isKindOfClass:[NSArray class]]) item.filePaths = json[@"filePaths"];
     if ([json[@"pixelWidth"] isKindOfClass:[NSNumber class]]) item.pixelWidth = [json[@"pixelWidth"] integerValue];

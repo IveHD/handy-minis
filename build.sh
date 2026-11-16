@@ -1,9 +1,9 @@
 #!/bin/bash
-# Build the macOS toolbox as DeskKit.app.
+# Build the macOS toolbox as HandyMinis.app.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP=".build/DeskKit.app"
+APP=".build/HandyMinis.app"
 SDK="$(xcrun --show-sdk-path)"
 SPARKLE="$PWD/.build/sparkle"
 if [[ ! -d "$SPARKLE/Sparkle.framework" ]]; then
@@ -19,10 +19,10 @@ mkdir -p "$APP/Contents/MacOS"
 source scripts/swift-toolchain.sh
 
 for arch in x86_64 arm64; do
-  object_dir="$PWD/.build/deskkit-objects/$arch"
+  object_dir="$PWD/.build/handyminis-objects/$arch"
   mkdir -p "$object_dir"
   objects=()
-  for source_file in Sources/DeskKit/*.m; do
+  for source_file in Sources/HandyMinis/*.m; do
     object="$object_dir/$(basename "${source_file%.m}").o"
     clang -c -fobjc-arc -O2 -Wall -isysroot "$SDK" -arch "$arch" \
       -mmacosx-version-min=14.0 -F "$SPARKLE" "$source_file" -o "$object"
@@ -32,14 +32,14 @@ for arch in x86_64 arm64; do
   xcrun swiftc -parse-as-library -O -whole-module-optimization \
     -sdk "$SDK" -target "$arch-apple-macosx14.0" -module-cache-path "$swift_cache" \
     ${clang_flags[@]+"${clang_flags[@]}"} \
-    Sources/DeskKit/ScreenshotBridge.swift Sources/DeskKit/Screenshot/*.swift "${objects[@]}" \
+    Sources/HandyMinis/ScreenshotBridge.swift Sources/HandyMinis/Screenshot/*.swift "${objects[@]}" \
     -F "$SPARKLE" -framework Sparkle -framework QuartzCore -framework Carbon \
     -framework ApplicationServices -framework ServiceManagement \
     -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
-    -o "$object_dir/DeskKit"
+    -o "$object_dir/HandyMinis"
 done
-xcrun lipo -create .build/deskkit-objects/{x86_64,arm64}/DeskKit \
-  -output "$APP/Contents/MacOS/DeskKit"
+xcrun lipo -create .build/handyminis-objects/{x86_64,arm64}/HandyMinis \
+  -output "$APP/Contents/MacOS/HandyMinis"
 
 cp Info.plist "$APP/Contents/Info.plist"
 mkdir -p "$APP/Contents/Frameworks" "$APP/Contents/Resources"
@@ -57,9 +57,9 @@ else
   codesign --force --deep --sign - "$APP" >/dev/null
 fi
 
-rm -rf DeskKit.app
-mv "$APP" DeskKit.app
-APP="DeskKit.app"
+rm -rf HandyMinis.app
+mv "$APP" HandyMinis.app
+APP="HandyMinis.app"
 echo "已生成 $APP"
 echo "运行: open $APP"
 echo "快捷键: ⌘⇧C 打开历史，⌃⌘A 框选截图"

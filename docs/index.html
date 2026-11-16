@@ -3,39 +3,47 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DeskKit for macOS｜截图 OCR、剪贴板历史与窗口贴靠</title>
-  <meta name="description" content="DeskKit 是一款 macOS 菜单栏工具。找回复制过的内容，给截图打码并在本机识别文字，或把窗口贴靠到屏幕边缘。">
-  <link rel="canonical" href="https://ivehd.github.io/desk-kit/">
-  <meta property="og:title" content="DeskKit for macOS｜截图 OCR、剪贴板历史与窗口贴靠">
-  <meta property="og:description" content="DeskKit 是一款 macOS 菜单栏工具。找回复制过的内容，给截图打码并在本机识别文字，或把窗口贴靠到屏幕边缘。">
-  <meta property="og:url" content="https://ivehd.github.io/desk-kit/">
+  <title>HandyMinis for macOS｜截图 OCR、剪贴板历史与窗口贴靠</title>
+  <meta name="description" content="HandyMinis 是一组放在 macOS 菜单栏里的顺手小工具。找回复制过的内容，给截图打码并在本机识别文字，或把窗口贴靠到屏幕边缘。">
+  <link rel="canonical" href="https://ivehd.github.io/handy-minis/">
+  <meta property="og:title" content="HandyMinis for macOS｜截图 OCR、剪贴板历史与窗口贴靠">
+  <meta property="og:description" content="HandyMinis 是一组放在 macOS 菜单栏里的顺手小工具。找回复制过的内容，给截图打码并在本机识别文字，或把窗口贴靠到屏幕边缘。">
+  <meta property="og:url" content="https://ivehd.github.io/handy-minis/">
+  <link rel="icon" href="./assets/handy-minis.svg" type="image/svg+xml">
+  <link rel="icon" href="./assets/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png">
+  <meta name="theme-color" content="#13382e">
+  <meta property="og:image" content="https://ivehd.github.io/handy-minis/assets/social-card.png">
+  <meta property="og:image:alt" content="HandyMinis · 顺手小工具，共享笔画的 HM 图标">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
   <header><nav aria-label="主导航">
-    <a class="brand" href="./">DeskKit</a>
-    <a href="https://github.com/IveHD/desk-kit">GitHub</a>
+    <a class="brand" href="./"><img src="./assets/handy-minis.svg" width="36" height="36" alt=""><span>HandyMinis</span></a>
+    <a href="https://github.com/IveHD/handy-minis">GitHub</a>
   </nav></header>
   <main>
-    <h1>DeskKit for macOS</h1>
-    <p class="intro">DeskKit 是一款 macOS 菜单栏工具。找回复制过的内容，给截图打码并在本机识别文字，或把窗口贴靠到屏幕边缘。</p>
+    <div class="hero-brand"><img src="./assets/app-icon.png" width="104" height="104" alt="HM 共享笔画图标"><p class="eyebrow">HANDYMINIS FOR macOS</p></div>
+    <h1>小工具，<br>每天都用得上。</h1>
+    <p class="intro">HandyMinis 是一组放在 macOS 菜单栏里的顺手小工具。找回复制过的内容，给截图打码并在本机识别文字，或把窗口贴靠到屏幕边缘。</p>
     <div class="actions">
-      <a class="button" href="https://github.com/IveHD/desk-kit/releases/latest">下载正式版</a>
-      <a class="button secondary" href="https://github.com/IveHD/desk-kit">查看 GitHub 仓库</a>
+      <a class="button" href="https://github.com/IveHD/handy-minis/releases/latest">下载正式版</a>
+      <a class="button secondary" href="https://github.com/IveHD/handy-minis">查看 GitHub 仓库</a>
     </div>
 
-    <p>演示使用示例数据，窗口布局为操作示意。各版本支持的功能见 <a href="https://github.com/IveHD/desk-kit/releases">发布说明</a>。</p>
+    <p>演示均使用示例内容制作，为功能操作示意。各版本支持的功能见 <a href="https://github.com/IveHD/handy-minis/releases">发布说明</a>。</p>
 
     <section>
       <h2>找回复制内容，整理常用语和文件</h2>
       <p>按 <kbd>⌘⇧C</kbd> 打开剪贴板，搜索之前复制的内容。选中文本后按 <kbd>⇧↵</kbd> 去掉格式后粘贴，或用 <kbd>⌃↵</kbd> 存为常用语。文件可以放进「文件暂存」，需要时拖到目标应用。</p>
-      <img src="demos/clipboard-workflow.gif" width="460" height="520" alt="新版剪贴板界面演示，依次展示历史、常用语和文件暂存三个分区">
+      <img src="demos/clipboard-workflow.gif" width="460" height="520" alt="剪贴板操作示意，依次展示历史、常用语和文件暂存三个分区">
       <p><a href="guides/mac-clipboard-history/">查看剪贴板操作指南 →</a></p>
     </section>
     <section>
       <h2>给截图打码，在本机提取文字</h2>
       <p>按 <kbd>⌃⌘A</kbd> 框选截图。用 <kbd>M</kbd> 加马赛克，或用 <kbd>B</kbd> 实心遮挡。按 <kbd>X</kbd> 识别中英文，选中文字后用 <kbd>⌘C</kbd> 复制。</p>
-      <img src="demos/screenshot-ocr.gif" width="800" height="480" alt="DeskKit 截图工具栏演示，框选后遮挡敏感内容，再选择并复制 OCR 文字" loading="lazy">
+      <img src="demos/screenshot-ocr.gif" width="800" height="480" alt="HandyMinis 截图工具栏演示，框选后遮挡敏感内容，再选择并复制 OCR 文字" loading="lazy">
       <p><a href="guides/mac-screenshot-ocr/">查看截图打码与 OCR 指南 →</a></p>
     </section>
     <section>
@@ -45,11 +53,11 @@
     </section>
     <section>
       <h2>安装和权限</h2>
-      <p>需要 macOS 14 或更新版本，支持 Apple 芯片和 Intel Mac。下载 DMG 后将 DeskKit 拖入「应用程序」，从菜单栏的 DK 图标打开设置。</p>
-      <p>截图需要屏幕录制权限。自动粘贴和窗口贴靠需要辅助功能权限。安装与首次打开说明见 <a href="https://github.com/IveHD/desk-kit#安装">GitHub README</a>。</p>
+      <p>需要 macOS 14 或更新版本，支持 Apple 芯片和 Intel Mac。下载 DMG 后将 HandyMinis 拖入「应用程序」，从菜单栏的 HM 图标打开设置。</p>
+      <p>截图需要屏幕录制权限。自动粘贴和窗口贴靠需要辅助功能权限。安装与首次打开说明见 <a href="https://github.com/IveHD/handy-minis#安装">GitHub README</a>。</p>
     </section>
 
   </main>
-  <footer><a href="./">DeskKit for macOS</a> · <a href="https://github.com/IveHD/desk-kit/releases">发布历史</a></footer>
+  <footer><a href="./">HandyMinis for macOS</a> · <a href="https://github.com/IveHD/handy-minis/releases">发布历史</a></footer>
 </body>
 </html>

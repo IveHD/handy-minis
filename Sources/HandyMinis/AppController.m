@@ -12,7 +12,7 @@
 #import <ServiceManagement/ServiceManagement.h>
 
 static OSStatus HotkeyHandler(EventHandlerCallRef next, EventRef event, void *userData);
-static const OSType DeskKitHotkeySignature = 'CQUE';
+static const OSType HandyMinisHotkeySignature = 'CQUE';
 static NSString *const WindowTilingDisabledKey = @"WindowTilingDisabled";
 enum {
     QueueMenuTag = 10, ScreenshotMenuTag, ClearHistoryMenuTag, HistoryCountMenuTag, HistorySeparatorMenuTag,
@@ -33,8 +33,8 @@ typedef struct {
 } ToolShortcut;
 
 static const ToolConfiguration Tools[] = {
-    [DeskKitShortcutQueue] = {@"CopyQueueDisabled", @"CopyQueueHotKeyCode", @"CopyQueueHotKeyModifiers", kVK_ANSI_C, cmdKey | shiftKey},
-    [DeskKitShortcutScreenshot] = {@"ScreenshotDisabled", @"ScreenshotHotKeyCode", @"ScreenshotHotKeyModifiers", kVK_ANSI_A, controlKey | cmdKey},
+    [HandyMinisShortcutQueue] = {@"CopyQueueDisabled", @"CopyQueueHotKeyCode", @"CopyQueueHotKeyModifiers", kVK_ANSI_C, cmdKey | shiftKey},
+    [HandyMinisShortcutScreenshot] = {@"ScreenshotDisabled", @"ScreenshotHotKeyCode", @"ScreenshotHotKeyModifiers", kVK_ANSI_A, controlKey | cmdKey},
 };
 
 static void PostCommandVToPid(pid_t pid) {
@@ -127,7 +127,7 @@ static BOOL PressPasteInElement(AXUIElementRef element, int depth, PasteCheck is
 }
 
 static BOOL PressPasteMenu(pid_t pid, PasteCheck isCurrent, PasteCheck canPress) {
-    if (pid <= 0 || !isCurrent() || !DeskKitAccessibilityTrusted()) return NO;
+    if (pid <= 0 || !isCurrent() || !HandyMinisAccessibilityTrusted()) return NO;
     AXUIElementRef app = AXUIElementCreateApplication(pid);
     if (!app) return NO;
     AXUIElementSetMessagingTimeout(app, 0.25);
@@ -179,6 +179,8 @@ static void OpenAccessibilitySettings(void) {
 @property QueuePanel *panel;
 @property SettingsPanel *settings;
 @property WindowTiling *windowTiling;
+@property NSMenu *layoutMenu;
+@property BOOL layoutOperationPending;
 @property NSStatusItem *statusItem;
 @property NSTimer *timer;
 @property NSInteger lastChangeCount;
@@ -203,7 +205,7 @@ static void OpenAccessibilitySettings(void) {
     if ([self handOffToExistingInstance]) exit(0);
 
     [SettingsPanel applySavedTheme];
-    self.pasteQueue = dispatch_queue_create("local.handong.DeskKit.paste", DISPATCH_QUEUE_SERIAL);
+    self.pasteQueue = dispatch_queue_create("local.handong.HandyMinis.paste", DISPATCH_QUEUE_SERIAL);
     self.store = [ClipboardStore new];
     [self.store load];
     self.panel = [[QueuePanel alloc] initWithStore:self.store];
@@ -211,7 +213,7 @@ static void OpenAccessibilitySettings(void) {
     self.settings = [SettingsPanel new];
     self.settings.delegate = self;
     self.lastChangeCount = NSPasteboard.generalPasteboard.changeCount;
-    if ([self toolIsEnabledForAction:DeskKitShortcutQueue]) {
+    if ([self toolIsEnabledForAction:HandyMinisShortcutQueue]) {
         [self.store ingestPasteboard:NSPasteboard.generalPasteboard];
         [self startMonitoring];
     }
@@ -220,7 +222,7 @@ static void OpenAccessibilitySettings(void) {
     }
     [Analytics track:@"app_started"];
     self.windowTiling = [WindowTiling new];
-    if ([self isPreferenceEnabled:DeskKitPreferenceTiling]) [self.windowTiling start];
+    if ([self isPreferenceEnabled:HandyMinisPreferenceTiling]) [self.windowTiling start];
     [self loadShortcuts];
     [self registerHotkeys];
     [self installStatusItem];
@@ -229,9 +231,9 @@ static void OpenAccessibilitySettings(void) {
                                                         selector:@selector(showPanel)
                                                             name:@"local.handong.ClipStack.show"
                                                           object:nil];
-    fprintf(stdout, "DeskKit 已启动。快捷键 %s。自动粘贴: %s。历史目录: %s\n",
+    fprintf(stdout, "HandyMinis 已启动。快捷键 %s。自动粘贴: %s。历史目录: %s\n",
             [self shortcutTitle].UTF8String,
-            DeskKitAccessibilityTrusted() ? "可用" : "不可用",
+            HandyMinisAccessibilityTrusted() ? "可用" : "不可用",
             self.store.supportDirectoryPath.UTF8String);
     fflush(stdout);
 
@@ -261,21 +263,29 @@ static void OpenAccessibilitySettings(void) {
 - (void)installStatusItem {
     self.statusItem = [NSStatusBar.systemStatusBar statusItemWithLength:NSVariableStatusItemLength];
     NSImage *image = [NSImage imageNamed:@"StatusIconTemplate"];
-    image.accessibilityDescription = @"DeskKit";
+    image.size = NSMakeSize(18, 18);
+    image.accessibilityDescription = @"HandyMinis";
     image.template = YES;
     self.statusItem.button.image = image;
+    self.statusItem.button.toolTip = @"HandyMinis · 顺手小工具";
     self.statusItem.menu = [self buildMenu];
 }
 
 - (NSMenu *)buildMenu {
     NSMenu *menu = [NSMenu new];
     menu.delegate = self;
-    NSMenuItem *queue = [menu addItemWithTitle:@"打开队列" action:@selector(showPanel) keyEquivalent:@""];
+    NSMenuItem *queue = [menu addItemWithTitle:@"打开剪贴板" action:@selector(showPanel) keyEquivalent:@""];
     queue.target = self;
     queue.tag = QueueMenuTag;
     NSMenuItem *screenshot = [menu addItemWithTitle:@"框选截图" action:@selector(startScreenshot) keyEquivalent:@""];
     screenshot.target = self;
     screenshot.tag = ScreenshotMenuTag;
+    NSMenuItem *layouts = [menu addItemWithTitle:@"窗口布局" action:nil keyEquivalent:@""];
+    self.layoutMenu = [NSMenu new];
+    self.layoutMenu.delegate = self;
+    self.layoutMenu.autoenablesItems = NO;
+    layouts.submenu = self.layoutMenu;
+    [self menuNeedsUpdate:self.layoutMenu];
     [menu addItemWithTitle:@"设置…" action:@selector(showSettings:) keyEquivalent:@""].target = self;
     if (self.updaterController) {
         [menu addItemWithTitle:@"检查更新…" action:@selector(checkForUpdates:) keyEquivalent:@""].target = self.updaterController;
@@ -309,47 +319,135 @@ static void OpenAccessibilitySettings(void) {
     OpenAccessibilitySettings();
 }
 
+- (void)menuNeedsUpdate:(NSMenu *)menu {
+    if (menu != self.layoutMenu) return;
+    [menu removeAllItems];
+    NSMenuItem *save = [menu addItemWithTitle:@"保存当前布局…" action:@selector(saveWindowLayout:) keyEquivalent:@""];
+    save.target = self;
+    save.enabled = !self.layoutOperationPending;
+    NSArray<NSString *> *names = [self.windowTiling layoutNames];
+    if (!names.count) return;
+    [menu addItem:[NSMenuItem separatorItem]];
+    NSMenu *remove = [NSMenu new];
+    for (NSString *name in names) {
+        NSMenuItem *restore = [menu addItemWithTitle:name action:@selector(restoreWindowLayout:) keyEquivalent:@""];
+        restore.target = self;
+        restore.enabled = !self.layoutOperationPending;
+        NSMenuItem *delete = [remove addItemWithTitle:name action:@selector(deleteWindowLayout:) keyEquivalent:@""];
+        delete.target = self;
+        delete.enabled = !self.layoutOperationPending;
+    }
+    NSMenuItem *delete = [menu addItemWithTitle:@"删除布局" action:nil keyEquivalent:@""];
+    delete.submenu = remove;
+    remove.autoenablesItems = NO;
+}
+
 - (void)menuWillOpen:(NSMenu *)menu {
-    NSArray<NSNumber *> *actions = @[@(DeskKitShortcutQueue), @(DeskKitShortcutScreenshot)];
+    if (menu == self.layoutMenu) return;
+    [self rememberFrontApp];
+    NSArray<NSNumber *> *actions = @[@(HandyMinisShortcutQueue), @(HandyMinisShortcutScreenshot)];
     for (NSNumber *value in actions) {
-        DeskKitShortcut action = value.integerValue;
-        BOOL queue = action == DeskKitShortcutQueue;
+        HandyMinisShortcut action = value.integerValue;
+        BOOL queue = action == HandyMinisShortcutQueue;
         NSMenuItem *item = [menu itemWithTag:queue ? QueueMenuTag : ScreenshotMenuTag];
         item.hidden = ![self toolIsEnabledForAction:action];
-        NSString *title = queue ? @"打开队列" : @"框选截图";
+        NSString *title = queue ? @"打开剪贴板" : @"框选截图";
         if (_shortcuts[action].reference) {
             title = [NSString stringWithFormat:@"%@  %@", title, [self shortcutTitleForAction:action]];
         }
         item.title = title;
     }
-    BOOL queueEnabled = [self toolIsEnabledForAction:DeskKitShortcutQueue];
+    BOOL queueEnabled = [self toolIsEnabledForAction:HandyMinisShortcutQueue];
     [menu itemWithTag:ClearHistoryMenuTag].hidden = !queueEnabled;
     [menu itemWithTag:HistorySeparatorMenuTag].hidden = !queueEnabled;
     NSMenuItem *count = [menu itemWithTag:HistoryCountMenuTag];
     count.hidden = !queueEnabled;
     count.title = [NSString stringWithFormat:@"已保存 %lu 条", (unsigned long)self.store.items.count];
-    [menu itemWithTag:4].hidden = DeskKitAccessibilityTrusted();
+    [menu itemWithTag:4].hidden = HandyMinisAccessibilityTrusted();
 }
 
-- (BOOL)isPreferenceEnabled:(DeskKitPreference)preference {
+- (void)showToolMessage:(NSString *)title detail:(NSString *)detail {
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = title;
+    alert.informativeText = detail;
+    [NSApp activate];
+    [alert runModal];
+}
+
+- (void)saveWindowLayout:(id)sender {
+    if (self.layoutOperationPending || HandyMinisScreenshotIsActive()) return;
+    if (!HandyMinisAccessibilityTrusted()) { HandyMinisPromptAccessibility(); return; }
+
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = @"保存当前窗口布局";
+    alert.informativeText = @"记录当前桌面上可移动窗口的位置和大小。";
+    NSTextField *field = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
+    field.placeholderString = @"布局名称";
+    alert.accessoryView = field;
+    [alert addButtonWithTitle:@"保存"];
+    [alert addButtonWithTitle:@"取消"];
+    alert.window.initialFirstResponder = field;
+    [NSApp activate];
+    if ([alert runModal] != NSAlertFirstButtonReturn) return;
+    NSString *name = [field.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (!name.length) return;
+    if ([[self.windowTiling layoutNames] containsObject:name]) {
+        NSAlert *replace = [NSAlert new];
+        replace.messageText = [NSString stringWithFormat:@"替换布局「%@」？", name];
+        [replace addButtonWithTitle:@"替换"];
+        [replace addButtonWithTitle:@"取消"];
+        if ([replace runModal] != NSAlertFirstButtonReturn) return;
+    }
+    self.layoutOperationPending = YES;
+    [self.windowTiling saveLayoutNamed:name completion:^(NSUInteger count) {
+        self.layoutOperationPending = NO;
+        if (!count) [self showToolMessage:@"未保存窗口布局" detail:@"当前桌面上没有找到可移动和调整大小的窗口。"];
+    }];
+}
+
+- (void)restoreWindowLayout:(NSMenuItem *)sender {
+    if (self.layoutOperationPending || HandyMinisScreenshotIsActive()) return;
+    if (!HandyMinisAccessibilityTrusted()) { HandyMinisPromptAccessibility(); return; }
+
+    self.layoutOperationPending = YES;
+    [self.windowTiling restoreLayoutNamed:sender.title completion:^(NSUInteger restored, NSUInteger total) {
+        self.layoutOperationPending = NO;
+        if (restored == total) return;
+        NSString *detail = [NSString stringWithFormat:@"已恢复 %lu/%lu 个窗口。请在当前桌面打开对应窗口后重试。",
+            (unsigned long)restored, (unsigned long)total];
+        [self showToolMessage:@"部分窗口无法恢复" detail:detail];
+    }];
+}
+
+- (void)deleteWindowLayout:(NSMenuItem *)sender {
+    if (self.layoutOperationPending) return;
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = [NSString stringWithFormat:@"删除布局「%@」？", sender.title];
+    [alert addButtonWithTitle:@"删除"];
+    [alert addButtonWithTitle:@"取消"];
+    [NSApp activate];
+    if ([alert runModal] == NSAlertFirstButtonReturn) [self.windowTiling deleteLayoutNamed:sender.title];
+}
+
+- (BOOL)isPreferenceEnabled:(HandyMinisPreference)preference {
     switch (preference) {
-        case DeskKitPreferenceLaunchAtLogin: return SMAppService.mainAppService.status == SMAppServiceStatusEnabled;
-        case DeskKitPreferenceTiling: return ![NSUserDefaults.standardUserDefaults boolForKey:WindowTilingDisabledKey];
-        case DeskKitPreferenceAnalytics: return ![NSUserDefaults.standardUserDefaults boolForKey:@"AnalyticsDisabled"];
+        case HandyMinisPreferenceLaunchAtLogin: return SMAppService.mainAppService.status == SMAppServiceStatusEnabled;
+        case HandyMinisPreferenceTiling: return ![NSUserDefaults.standardUserDefaults boolForKey:WindowTilingDisabledKey];
+        case HandyMinisPreferenceAnalytics: return ![NSUserDefaults.standardUserDefaults boolForKey:@"AnalyticsDisabled"];
     }
     return NO;
 }
 
-- (void)togglePreference:(DeskKitPreference)preference {
+- (void)togglePreference:(HandyMinisPreference)preference {
     switch (preference) {
-        case DeskKitPreferenceLaunchAtLogin: [self toggleLaunchAtLogin:nil]; break;
-        case DeskKitPreferenceAnalytics: [self toggleAnalytics:nil]; break;
-        case DeskKitPreferenceTiling: {
+        case HandyMinisPreferenceLaunchAtLogin: [self toggleLaunchAtLogin:nil]; break;
+        case HandyMinisPreferenceAnalytics: [self toggleAnalytics:nil]; break;
+        case HandyMinisPreferenceTiling: {
             BOOL enabled = ![self isPreferenceEnabled:preference];
             [NSUserDefaults.standardUserDefaults setBool:!enabled forKey:WindowTilingDisabledKey];
             if (enabled) {
                 [self.windowTiling start];
-                if (!DeskKitAccessibilityTrusted()) OpenAccessibilitySettings();
+                if (!HandyMinisAccessibilityTrusted()) OpenAccessibilitySettings();
             } else {
                 [self.windowTiling stop];
             }
@@ -359,7 +457,7 @@ static void OpenAccessibilitySettings(void) {
 }
 
 - (void)confirmClear:(id)sender {
-    if (![self toolIsEnabledForAction:DeskKitShortcutQueue]) return;
+    if (![self toolIsEnabledForAction:HandyMinisShortcutQueue]) return;
     [NSApp activateIgnoringOtherApps:YES];
     NSAlert *alert = [NSAlert new];
     alert.messageText = @"清空全部复制历史？";
@@ -432,7 +530,7 @@ static UInt32 CarbonModifiersFromFlags(NSEventModifierFlags flags) {
 
 - (void)loadShortcuts {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    ToolConfiguration queue = Tools[DeskKitShortcutQueue];
+    ToolConfiguration queue = Tools[HandyMinisShortcutQueue];
     if (![defaults objectForKey:queue.codeKey]) {
         NSString *legacy = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Preferences/local.handong.CopyQueue.plist"];
         NSDictionary *old = [NSDictionary dictionaryWithContentsOfFile:legacy];
@@ -441,7 +539,7 @@ static UInt32 CarbonModifiersFromFlags(NSEventModifierFlags flags) {
             [defaults setObject:old[queue.modifiersKey] forKey:queue.modifiersKey];
         }
     }
-    for (DeskKitShortcut action = DeskKitShortcutQueue; action <= DeskKitShortcutScreenshot; action++) {
+    for (HandyMinisShortcut action = HandyMinisShortcutQueue; action <= HandyMinisShortcutScreenshot; action++) {
         ToolConfiguration config = Tools[action];
         _shortcuts[action].code = [defaults objectForKey:config.codeKey]
             ? (UInt32)[defaults integerForKey:config.codeKey] : config.defaultCode;
@@ -451,10 +549,10 @@ static UInt32 CarbonModifiersFromFlags(NSEventModifierFlags flags) {
 }
 
 - (NSString *)shortcutTitle {
-    return [self shortcutTitleForAction:DeskKitShortcutQueue];
+    return [self shortcutTitleForAction:HandyMinisShortcutQueue];
 }
 
-- (NSString *)shortcutTitleForAction:(DeskKitShortcut)action {
+- (NSString *)shortcutTitleForAction:(HandyMinisShortcut)action {
     UInt32 modifiers = _shortcuts[action].modifiers;
     UInt32 code = _shortcuts[action].code;
     if (!modifiers) return @"未设置";
@@ -467,18 +565,18 @@ static UInt32 CarbonModifiersFromFlags(NSEventModifierFlags flags) {
     return title;
 }
 
-static EventHotKeyRef RegisterShortcut(DeskKitShortcut action, UInt32 code, UInt32 modifiers) {
-    EventHotKeyID hotkey = {DeskKitHotkeySignature, (UInt32)action};
+static EventHotKeyRef RegisterShortcut(HandyMinisShortcut action, UInt32 code, UInt32 modifiers) {
+    EventHotKeyID hotkey = {HandyMinisHotkeySignature, (UInt32)action};
     EventHotKeyRef reference = NULL;
     OSStatus result = RegisterEventHotKey(code, modifiers, hotkey, GetApplicationEventTarget(), kEventHotKeyExclusive, &reference);
     return result == noErr ? reference : NULL;
 }
 
-- (BOOL)toolIsEnabledForAction:(DeskKitShortcut)action {
+- (BOOL)toolIsEnabledForAction:(HandyMinisShortcut)action {
     return ![NSUserDefaults.standardUserDefaults boolForKey:Tools[action].disabledKey];
 }
 
-- (void)updateShortcutRegistrationForAction:(DeskKitShortcut)action {
+- (void)updateShortcutRegistrationForAction:(HandyMinisShortcut)action {
     ToolShortcut *shortcut = &_shortcuts[action];
     if ([self toolIsEnabledForAction:action] && shortcut->modifiers) {
         if (self.hotkeyHandler && !shortcut->reference) {
@@ -490,22 +588,23 @@ static EventHotKeyRef RegisterShortcut(DeskKitShortcut action, UInt32 code, UInt
     }
 }
 
-- (void)setToolEnabled:(BOOL)enabled forAction:(DeskKitShortcut)action {
+- (void)setToolEnabled:(BOOL)enabled forAction:(HandyMinisShortcut)action {
     if (enabled == [self toolIsEnabledForAction:action]) return;
     [NSUserDefaults.standardUserDefaults setBool:!enabled forKey:Tools[action].disabledKey];
     [self updateShortcutRegistrationForAction:action];
     switch (action) {
-        case DeskKitShortcutQueue:
+        case HandyMinisShortcutQueue:
             if (enabled) {
                 self.lastChangeCount = NSPasteboard.generalPasteboard.changeCount;
                 [self startMonitoring];
             } else {
+                self.pasteGeneration++;
                 [self.timer invalidate];
                 self.timer = nil;
                 [self.panel hide];
             }
             break;
-        case DeskKitShortcutScreenshot:
+        case HandyMinisShortcutScreenshot:
             break;
     }
     [self.settings refreshTools];
@@ -514,12 +613,12 @@ static EventHotKeyRef RegisterShortcut(DeskKitShortcut action, UInt32 code, UInt
 - (void)registerHotkeys {
     EventTypeSpec spec = {kEventClassKeyboard, kEventHotKeyPressed};
     if (InstallEventHandler(GetApplicationEventTarget(), HotkeyHandler, 1, &spec, NULL, &_hotkeyHandler) != noErr) return;
-    for (DeskKitShortcut action = DeskKitShortcutQueue; action <= DeskKitShortcutScreenshot; action++) {
+    for (HandyMinisShortcut action = HandyMinisShortcutQueue; action <= HandyMinisShortcutScreenshot; action++) {
         [self updateShortcutRegistrationForAction:action];
     }
 }
 
-- (BOOL)shortcutIsUnavailableForAction:(DeskKitShortcut)action {
+- (BOOL)shortcutIsUnavailableForAction:(HandyMinisShortcut)action {
     return [self toolIsEnabledForAction:action] &&
         _shortcuts[action].modifiers && !_shortcuts[action].reference;
 }
@@ -527,33 +626,33 @@ static EventHotKeyRef RegisterShortcut(DeskKitShortcut action, UInt32 code, UInt
 - (void)startScreenshot {
     // Let the status menu finish closing before ScreenCaptureKit samples the display.
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (![self toolIsEnabledForAction:DeskKitShortcutScreenshot]) return;
+        if (![self toolIsEnabledForAction:HandyMinisShortcutScreenshot]) return;
         [self.panel hide];
-        DeskKitStartScreenshot();
+        HandyMinisStartScreenshot();
     });
 }
 
-- (void)saveShortcutForAction:(DeskKitShortcut)action {
+- (void)saveShortcutForAction:(HandyMinisShortcut)action {
     ToolShortcut shortcut = _shortcuts[action];
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     [defaults setInteger:shortcut.code forKey:Tools[action].codeKey];
     [defaults setInteger:shortcut.modifiers forKey:Tools[action].modifiersKey];
-    if (action == DeskKitShortcutQueue) [self.panel setShortcutTitle:[self shortcutTitle]];
+    if (action == HandyMinisShortcutQueue) [self.panel setShortcutTitle:[self shortcutTitle]];
 }
 
-- (void)clearShortcutForAction:(DeskKitShortcut)action {
+- (void)clearShortcutForAction:(HandyMinisShortcut)action {
     ToolShortcut *shortcut = &_shortcuts[action];
     shortcut->modifiers = 0;
     [self updateShortcutRegistrationForAction:action];
     [self saveShortcutForAction:action];
 }
 
-- (BOOL)recordShortcutForAction:(DeskKitShortcut)action keyCode:(unsigned short)code modifierFlags:(NSEventModifierFlags)flags {
+- (BOOL)recordShortcutForAction:(HandyMinisShortcut)action keyCode:(unsigned short)code modifierFlags:(NSEventModifierFlags)flags {
     if (!self.hotkeyHandler) return NO;
     UInt32 modifiers = CarbonModifiersFromFlags(flags);
     ToolShortcut *shortcut = &_shortcuts[action];
     if (shortcut->reference && code == shortcut->code && modifiers == shortcut->modifiers) return YES;
-    for (DeskKitShortcut other = DeskKitShortcutQueue; other <= DeskKitShortcutScreenshot; other++) {
+    for (HandyMinisShortcut other = HandyMinisShortcutQueue; other <= HandyMinisShortcutScreenshot; other++) {
         if (other != action && code == _shortcuts[other].code && modifiers == _shortcuts[other].modifiers) return NO;
     }
     EventHotKeyRef replacement = RegisterShortcut(action, code, modifiers);
@@ -569,7 +668,7 @@ static EventHotKeyRef RegisterShortcut(DeskKitShortcut action, UInt32 code, UInt
     [self.settings show];
 }
 
-- (BOOL)handleShortcutWhileRecording:(DeskKitShortcut)action {
+- (BOOL)handleShortcutWhileRecording:(HandyMinisShortcut)action {
     return [self.settings handleRegisteredShortcut:action];
 }
 
@@ -592,7 +691,6 @@ static EventHotKeyRef RegisterShortcut(DeskKitShortcut action, UInt32 code, UInt
 }
 
 - (void)rememberFrontApp {
-    if (self.panel.isVisible) return;
     NSRunningApplication *front = NSWorkspace.sharedWorkspace.frontmostApplication;
     if (front && !front.terminated && front.processIdentifier != getpid()) {
         self.previousApp = front;
@@ -615,7 +713,7 @@ static EventHotKeyRef RegisterShortcut(DeskKitShortcut action, UInt32 code, UInt
 }
 
 - (void)showPanel {
-    if (![self toolIsEnabledForAction:DeskKitShortcutQueue] || DeskKitScreenshotIsActive()) return;
+    if (![self toolIsEnabledForAction:HandyMinisShortcutQueue] || HandyMinisScreenshotIsActive()) return;
     self.pasteGeneration++;
     [Analytics track:@"queue_opened"];
     [self pollPasteboard];
@@ -624,17 +722,18 @@ static EventHotKeyRef RegisterShortcut(DeskKitShortcut action, UInt32 code, UInt
 
 #pragma mark - QueuePanelDelegate
 
-- (void)queuePanel:(QueuePanel *)panel didChooseItem:(ClipItem *)item paste:(BOOL)paste {
+- (void)queuePanel:(QueuePanel *)panel didChooseItem:(ClipItem *)item paste:(BOOL)paste plainText:(BOOL)plainText {
     NSUInteger generation = ++self.pasteGeneration;
-    if (![self.store restoreItem:item]) return;
+    if (![self.store restoreItem:item plainText:plainText]) { NSBeep(); return; }
     if (paste) [Analytics track:@"paste_requested"];
+    [self rememberFrontApp];
     NSRunningApplication *target = self.previousApp;
     if (!target || target.terminated || target.processIdentifier == getpid()) target = nil;
 
     [panel hide];
     if (!paste || !target) return;
-    if (!DeskKitAccessibilityTrusted()) {
-        DeskKitPromptAccessibility();
+    if (!HandyMinisAccessibilityTrusted()) {
+        HandyMinisPromptAccessibility();
         return;
     }
     [self sendPasteToApplication:target attempt:0 generation:generation change:self.store.suppressedChangeCount];
@@ -645,7 +744,7 @@ static EventHotKeyRef RegisterShortcut(DeskKitShortcut action, UInt32 code, UInt
     PasteCheck isCurrent = ^BOOL {
         return self.pasteGeneration == generation;
     };
-    if (!isCurrent() || ![self toolIsEnabledForAction:DeskKitShortcutQueue] || target.terminated ||
+    if (!isCurrent() || target.terminated ||
         self.panel.isVisible || NSPasteboard.generalPasteboard.changeCount != change) return;
     pid_t pid = target.processIdentifier;
     if (NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier != pid) {
@@ -660,7 +759,7 @@ static EventHotKeyRef RegisterShortcut(DeskKitShortcut action, UInt32 code, UInt
     // synchronous AX messages, so do that work away from the event loop.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 120 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
         PasteCheck canPaste = ^BOOL {
-            return isCurrent() && [self toolIsEnabledForAction:DeskKitShortcutQueue] && !self.panel.isVisible &&
+            return isCurrent() && !self.panel.isVisible &&
                 !target.terminated && NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier == pid &&
                 NSPasteboard.generalPasteboard.changeCount == change;
         };
@@ -700,15 +799,15 @@ static OSStatus HotkeyHandler(EventHandlerCallRef next, EventRef event, void *us
     EventHotKeyID hotkey;
     if (GetEventParameter(event, kEventParamDirectObject, typeEventHotKeyID,
                           NULL, sizeof(hotkey), NULL, &hotkey) != noErr ||
-        hotkey.signature != DeskKitHotkeySignature) return eventNotHandledErr;
+        hotkey.signature != HandyMinisHotkeySignature) return eventNotHandledErr;
 
     AppController *controller = [AppController shared];
     switch (hotkey.id) {
-        case DeskKitShortcutQueue:
-            if (![controller handleShortcutWhileRecording:DeskKitShortcutQueue]) [controller hotkeyPressed];
+        case HandyMinisShortcutQueue:
+            if (![controller handleShortcutWhileRecording:HandyMinisShortcutQueue]) [controller hotkeyPressed];
             break;
-        case DeskKitShortcutScreenshot:
-            if (![controller handleShortcutWhileRecording:DeskKitShortcutScreenshot]) [controller startScreenshot];
+        case HandyMinisShortcutScreenshot:
+            if (![controller handleShortcutWhileRecording:HandyMinisShortcutScreenshot]) [controller startScreenshot];
             break;
         default: return eventNotHandledErr;
     }

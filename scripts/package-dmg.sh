@@ -2,11 +2,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-app="DeskKit.app"
+app="HandyMinis.app"
 version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
-output="dist/DeskKit-${version}-macOS-Universal.dmg"
+output="dist/HandyMinis-${version}-macOS-Universal.dmg"
 mkdir -p .build dist
-work="$(mktemp -d "$PWD/.build/deskkit-dmg.XXXXXX")"
+work="$(mktemp -d "$PWD/.build/handyminis-dmg.XXXXXX")"
 staging="$work/staging"
 mount="$work/mount"
 mounted=0
@@ -23,7 +23,7 @@ ditto "$app" "$staging/$app"
 ln -s /Applications "$staging/Applications"
 cp "$app/Contents/Resources/AppIcon.icns" "$staging/.VolumeIcon.icns"
 
-hdiutil create -fs HFS+ -volname DeskKit -srcfolder "$staging" -format UDRW "$work/install.dmg"
+hdiutil create -fs HFS+ -volname HandyMinis -srcfolder "$staging" -format UDRW "$work/install.dmg"
 hdiutil attach -nobrowse -mountpoint "$mount" "$work/install.dmg"
 mounted=1
 # Set the flag on the volume root so it survives compression and distribution.
