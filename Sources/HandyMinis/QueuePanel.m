@@ -19,6 +19,22 @@
 - (BOOL)acceptsFirstResponder { return NO; }
 @end
 
+@interface FlatSearchFieldCell : NSSearchFieldCell
+@end
+@implementation FlatSearchFieldCell
+- (void)drawWithFrame:(NSRect)frame inView:(NSView *)view {
+    [HMTheme.canvas setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:frame xRadius:8 yRadius:8] fill];
+    [super drawInteriorWithFrame:frame inView:view];
+}
+@end
+
+@interface FlatSearchField : NSSearchField
+@end
+@implementation FlatSearchField
++ (Class)cellClass { return FlatSearchFieldCell.class; }
+@end
+
 @interface ClipCellView : NSTableCellView
 @property NSTextField *indexLabel;
 @property NSImageView *iconView;
@@ -35,7 +51,6 @@
 @property CGFloat laidOutWidth;
 @property CGFloat textHeight;
 @property NSColor *selectionColor;
-@property NSColor *selectionBorderColor;
 @property NSColor *iconBackgroundColor;
 - (void)applyColors;
 - (void)showThumbnail:(NSImage *)image;
@@ -57,7 +72,6 @@
         self.layer.cornerRadius = 10;
         self.layer.cornerCurve = kCACornerCurveContinuous;
         _selectionColor = HMTheme.selection;
-        _selectionBorderColor = HMTheme.selectionBorder;
         _iconBackgroundColor = HMTheme.iconBackground;
         _indexLabel = [ClipCellView label];
         _indexLabel.font = [NSFont monospacedDigitSystemFontOfSize:11 weight:NSFontWeightSemibold];
@@ -114,8 +128,6 @@
 - (void)applyColors {
     [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
         self.layer.backgroundColor = (self.expanded ? self.selectionColor : NSColor.clearColor).CGColor;
-        self.layer.borderWidth = self.expanded ? 1 : 0;
-        self.layer.borderColor = self.selectionBorderColor.CGColor;
         self.iconView.layer.backgroundColor = (self.iconView.contentTintColor ? self.iconBackgroundColor : NSColor.clearColor).CGColor;
     }];
 }
@@ -523,6 +535,10 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     NSButton *save = [NSButton buttonWithTitle:@"存为常用语 ⌃↩" target:self action:@selector(saveSelection:)];
     NSButton *more = [NSButton buttonWithTitle:@"更多 ▾" target:self action:@selector(showActions:)];
     more.toolTip = @"⌥↩ 打开更多操作";
+    for (NSButton *button in @[addPhrase, actions, closeShelf, paste, plainPaste, save, more]) {
+        button.bezelStyle = NSBezelStyleRecessed;
+        button.showsBorderOnlyWhileMouseInside = YES;
+    }
     NSStackView *itemActions = [NSStackView stackViewWithViews:@[paste, plainPaste, save, more]];
     itemActions.spacing = 4;
     itemActions.distribution = NSStackViewDistributionFillProportionally;
@@ -542,10 +558,11 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     shortcut.alignment = NSTextAlignmentRight;
     self.shortcutLabel = shortcut;
 
-    self.searchField = [NSSearchField new];
+    self.searchField = [FlatSearchField new];
     self.searchField.placeholderString = @"搜索复制内容";
     self.searchField.delegate = self;
     self.searchField.font = [NSFont systemFontOfSize:13];
+    self.searchField.bezeled = YES;
     self.searchField.focusRingType = NSFocusRingTypeNone;
     self.searchField.translatesAutoresizingMaskIntoConstraints = YES;
 

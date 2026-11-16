@@ -55,9 +55,14 @@ static void CheckDataAndSelection(FixtureStore *store, QueuePanel *panel, NSTabl
     files.filePaths = paths;
     NSCAssert(files.displayPreview.length < 1200 && [files matchesQuery:@"file-999"], @"file preview/search");
     NSSearchField *search = [panel valueForKey:@"searchField"];
-    search.stringValue = @"TAIL_SEARCH_MARKER";
-    [panel reloadKeepingSelection:NO];
+    // The flat search cell must retain native editing and live filtering.
+    [search selectText:nil];
+    NSTextView *editor = (NSTextView *)search.currentEditor;
+    NSCAssert(editor != nil && search.editable, @"search accepts keyboard focus and editing");
+    [editor insertText:@"TAIL_SEARCH_MARKER" replacementRange:NSMakeRange(0, editor.string.length)];
+    NSCAssert([search.stringValue isEqualToString:@"TAIL_SEARCH_MARKER"], @"native editor updates search value");
     NSCAssert(table.numberOfRows == 14 && table.selectedRow == 0, @"filter matching full text");
+    [search.window makeFirstResponder:table];
     search.stringValue = @"NO_MATCH_01234";
     [panel reloadKeepingSelection:NO];
     [panel moveSelection:1];

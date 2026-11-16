@@ -26,7 +26,8 @@ static NSColor *Pair(NSString *name, unsigned light, unsigned dark) {
 - (instancetype)initWithFrame:(NSRect)frame {
     if ((self = [super initWithFrame:frame])) {
         _fillColor = HMTheme.surface;
-        _strokeColor = HMTheme.border;
+        // Surfaces are separated by spacing and fill, without a surrounding rule.
+        _strokeColor = nil;
         _radius = 12;
         self.wantsLayer = YES;
         self.layer.cornerCurve = kCACornerCurveContinuous;

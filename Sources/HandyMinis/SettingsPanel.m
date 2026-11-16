@@ -108,12 +108,14 @@ static NSString *const ThemeKey = @"AppearanceTheme";
     [card addSubview:stack];
 
     self.themePicker = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    self.themePicker.bordered = NO;
     [self.themePicker addItemsWithTitles:@[@"跟随系统", @"浅色", @"深色"]];
     self.themePicker.target = self;
     self.themePicker.action = @selector(changeTheme:);
     [self addRowWithTitle:@"外观" control:self.themePicker toStack:stack];
 
     self.palettePicker = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    self.palettePicker.bordered = NO;
     [self.palettePicker addItemsWithTitles:@[@"系统默认", @"雾蓝", @"薄荷", @"暖沙", @"自定义"]];
     self.palettePicker.target = self;
     self.palettePicker.action = @selector(changePanelPalette:);
@@ -147,6 +149,8 @@ static NSString *const ThemeKey = @"AppearanceTheme";
     self.blurToggle = [NSButton checkboxWithTitle:@"背景模糊" target:self action:@selector(changePanelBlur:)];
     self.blurToggle.toolTip = @"透明背景下柔化后面的内容；遵循系统的减少透明度设置";
     NSButton *reset = [NSButton buttonWithTitle:@"恢复面板默认外观" target:self action:@selector(resetPanelStyle:)];
+    reset.bezelStyle = NSBezelStyleRecessed;
+    reset.showsBorderOnlyWhileMouseInside = YES;
     NSStackView *appearanceActions = [NSStackView stackViewWithViews:@[self.blurToggle, [NSView new], reset]];
     [stack addArrangedSubview:appearanceActions];
     [appearanceActions.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
@@ -154,10 +158,7 @@ static NSString *const ThemeKey = @"AppearanceTheme";
     hint.font = [NSFont systemFontOfSize:11];
     hint.textColor = NSColor.secondaryLabelColor;
     [stack addArrangedSubview:hint];
-    NSBox *appearanceSeparator = [NSBox new];
-    appearanceSeparator.boxType = NSBoxSeparator;
-    [stack addArrangedSubview:appearanceSeparator];
-    [appearanceSeparator.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
+    [stack setCustomSpacing:24 afterView:hint];
 
 
     NSTextField *toolsLabel = [NSTextField labelWithString:@"工具"];
@@ -175,6 +176,8 @@ static NSString *const ThemeKey = @"AppearanceTheme";
         [toolButtons addObject:toggle];
 
         NSButton *shortcut = [NSButton buttonWithTitle:@"" target:self action:@selector(recordClicked:)];
+        shortcut.bezelStyle = NSBezelStyleRecessed;
+        shortcut.showsBorderOnlyWhileMouseInside = YES;
         shortcut.tag = action.integerValue;
         shortcut.toolTip = shortcutLabels[index];
         [shortcut setAccessibilityLabel:[shortcutLabels[index] stringByAppendingString:@"快捷键"]];
@@ -197,10 +200,7 @@ static NSString *const ThemeKey = @"AppearanceTheme";
     [stack addArrangedSubview:self.statusLabel];
     [self.statusLabel.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
 
-    NSBox *separator = [NSBox new];
-    separator.boxType = NSBoxSeparator;
-    [stack addArrangedSubview:separator];
-    [separator.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
+    [stack setCustomSpacing:24 afterView:self.statusLabel];
 
     NSMutableArray<NSButton *> *preferences = [NSMutableArray arrayWithObject:tiling];
     NSArray<NSString *> *preferenceTitles = @[@"登录时启动", @"发送匿名使用统计"];
