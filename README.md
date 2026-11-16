@@ -4,9 +4,13 @@
 
 HandyMinis 是一组放在 macOS 菜单栏里的顺手小工具。用它找回复制内容、保存常用语和暂存文件，给截图打码或在本机提取文字，也可以贴靠窗口并保存和恢复布局。
 
-[下载 HandyMinis 1.0.6（Universal DMG）](https://github.com/IveHD/handy-minis/releases/download/v1.0.6/HandyMinis-1.0.6-macOS-Universal.dmg) · [发布说明与 SHA-256 校验文件](https://github.com/IveHD/handy-minis/releases/tag/v1.0.6)
+[下载 HandyMinis 1.0.7（Universal DMG）](https://github.com/IveHD/handy-minis/releases/download/v1.0.7/HandyMinis-1.0.7-macOS-Universal.dmg) · [发布说明与 SHA-256 校验文件](https://github.com/IveHD/handy-minis/releases/tag/v1.0.7)
 
 [HandyMinis 首页](https://ivehd.github.io/handy-minis/) · [截图打码和 OCR 指南](https://ivehd.github.io/handy-minis/guides/mac-screenshot-ocr/) · [剪贴板历史指南](https://ivehd.github.io/handy-minis/guides/mac-clipboard-history/)
+
+## 1.0.7 更新
+
+修正剪贴板面板左上角 HM 图标与 HandyMinis 品牌文字的纵向视觉对齐。更新使用演示 GIF，剪贴板与截图演示采用实际应用界面和示例数据。
 
 ## 1.0.6 更新
 
