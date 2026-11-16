@@ -20,6 +20,15 @@ if feed:
     except ValueError:
         sys.exit("SPARKLE_PUBLIC_KEY must be a base64-encoded 32-byte Ed25519 public key")
     info.update(SUFeedURL=feed, SUPublicEDKey=public_key)
+rum_app_id = os.environ.get('ALIYUN_RUM_APP_ID', '')
+rum_config = os.environ.get('ALIYUN_RUM_CONFIG_ADDRESS', '')
+if bool(rum_app_id) != bool(rum_config):
+    sys.exit('ALIYUN_RUM_APP_ID and ALIYUN_RUM_CONFIG_ADDRESS must be set together')
+if rum_config:
+    config_url = urlparse(rum_config)
+    if config_url.scheme != 'https' or not config_url.hostname or config_url.username is not None:
+        sys.exit('ALIYUN_RUM_CONFIG_ADDRESS must be an HTTPS URL')
+    info.update(AliyunRUMAppID=rum_app_id, AliyunRUMConfigAddress=rum_config)
 for variable, key in [('APP_VERSION', 'CFBundleShortVersionString'),
                       ('APP_BUILD', 'CFBundleVersion'), ('APTABASE_APP_KEY', 'AptabaseAppKey')]:
     if os.environ.get(variable):

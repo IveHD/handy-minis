@@ -861,6 +861,7 @@ final class CaptureView: NSView, NSDraggingSource, NSTextViewDelegate {
     private func addMark(_ mark: CaptureMark) {
         recordEdit(previous: marks)
         marks.append(mark)
+        ScreenshotUsage.annotated.record()
     }
 
     private func recordEdit(previous: [CaptureMark]) {
@@ -1025,6 +1026,7 @@ final class CaptureView: NSView, NSDraggingSource, NSTextViewDelegate {
                 guard let self, self.recognitionID == id else { return }
                 self.recognitionID = nil
                 self.textLines = result
+                if result != nil { ScreenshotUsage.ocrCompleted.record() }
                 if self.tool == .ocr {
                     if result == nil { self.ocrStatus.stringValue = "识别失败，按 X 重试" }
                     self.updateTextControls()
@@ -1087,6 +1089,7 @@ final class CaptureView: NSView, NSDraggingSource, NSTextViewDelegate {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         guard pasteboard.setString(text, forType: .string) else { NSSound.beep(); return }
+        ScreenshotUsage.ocrTextCopied.record()
         ocrStatus.stringValue = "已复制文字"
         updateToolbar()
     }
@@ -1098,6 +1101,7 @@ final class CaptureView: NSView, NSDraggingSource, NSTextViewDelegate {
             item.setData(data, forType: .png)
             pasteboard.clearContents()
             guard pasteboard.writeObjects([item]) else { NSSound.beep(); return }
+            ScreenshotUsage.imageCopied.record()
             editor.onClose?(true)
         }
     }
@@ -1216,6 +1220,7 @@ final class CaptureView: NSView, NSDraggingSource, NSTextViewDelegate {
             if let folder { try? FileManager.default.removeItem(at: folder) }
             onDragVisibility?(true)
         } else {
+            ScreenshotUsage.exported.record()
             // Some targets read the dropped URL asynchronously.
             if let folder {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 300) {

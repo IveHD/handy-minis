@@ -1,5 +1,6 @@
 #import "WindowTiling.h"
 #import "AccessibilityTrust.h"
+#import "Analytics.h"
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
 #import <QuartzCore/QuartzCore.h>
@@ -635,6 +636,9 @@ static BOOL ApplyLayoutFrame(AXUIElementRef window, CGRect target) {
 
     CGRect applied;
     if (!AXRect(window, &applied)) return;
+    if (tiling && self.dragGeneration == generation && !CGRectEqualToRect(initial, applied)) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [Analytics reportFeature:@"window_snapped"]; });
+    }
     if (SameSize(applied.size, originalSize)) {
         [self.tiledWindows removeObjectForKey:windowID];
     } else if (tiling) {

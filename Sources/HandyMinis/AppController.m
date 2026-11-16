@@ -204,6 +204,7 @@ static void OpenAccessibilitySettings(void) {
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     if ([self handOffToExistingInstance]) exit(0);
 
+    [Analytics startRUM];
     [SettingsPanel applySavedTheme];
     self.pasteQueue = dispatch_queue_create("local.handong.HandyMinis.paste", DISPATCH_QUEUE_SERIAL);
     self.store = [ClipboardStore new];
@@ -226,6 +227,7 @@ static void OpenAccessibilitySettings(void) {
     [self loadShortcuts];
     [self registerHotkeys];
     [self installStatusItem];
+    [Analytics reportLaunchToRUM];
 
     [[NSDistributedNotificationCenter defaultCenter] addObserver:self
                                                         selector:@selector(showPanel)
@@ -242,6 +244,10 @@ static void OpenAccessibilitySettings(void) {
             [self showPanel];
         });
     }
+}
+
+- (void)applicationWillTerminate:(NSNotification *)notification {
+    [Analytics stopRUM];
 }
 
 - (BOOL)handOffToExistingInstance {
@@ -313,7 +319,13 @@ static void OpenAccessibilitySettings(void) {
 
 - (void)toggleAnalytics:(id)sender {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    [defaults setBool:![defaults boolForKey:@"AnalyticsDisabled"] forKey:@"AnalyticsDisabled"];
+    BOOL disabled = ![defaults boolForKey:@"AnalyticsDisabled"];
+    [defaults setBool:disabled forKey:@"AnalyticsDisabled"];
+    if (disabled) {
+        [Analytics stopRUM];
+    } else {
+        [Analytics startRUM];
+    }
 }
 
 - (void)openAccessibility:(id)sender {
@@ -402,6 +414,7 @@ static void OpenAccessibilitySettings(void) {
     self.layoutOperationPending = YES;
     [self.windowTiling saveLayoutNamed:name completion:^(NSUInteger count) {
         self.layoutOperationPending = NO;
+        if (count) [Analytics reportFeature:@"window_layout_saved"];
         if (!count) [self showToolMessage:@"未保存窗口布局" detail:@"当前桌面上没有找到可移动和调整大小的窗口。"];
     }];
 }
@@ -413,6 +426,7 @@ static void OpenAccessibilitySettings(void) {
     self.layoutOperationPending = YES;
     [self.windowTiling restoreLayoutNamed:sender.title completion:^(NSUInteger restored, NSUInteger total) {
         self.layoutOperationPending = NO;
+        if (restored) [Analytics reportFeature:@"window_layout_restored"];
         if (restored == total) return;
         NSString *detail = [NSString stringWithFormat:@"已恢复 %lu/%lu 个窗口。请在当前桌面打开对应窗口后重试。",
             (unsigned long)restored, (unsigned long)total];
@@ -427,7 +441,12 @@ static void OpenAccessibilitySettings(void) {
     [alert addButtonWithTitle:@"删除"];
     [alert addButtonWithTitle:@"取消"];
     [NSApp activate];
-    if ([alert runModal] == NSAlertFirstButtonReturn) [self.windowTiling deleteLayoutNamed:sender.title];
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        [self.windowTiling deleteLayoutNamed:sender.title];
+        if (![[self.windowTiling layoutNames] containsObject:sender.title]) {
+            [Analytics reportFeature:@"window_layout_deleted"];
+        }
+    }
 }
 
 - (BOOL)isPreferenceEnabled:(HandyMinisPreference)preference {
@@ -467,7 +486,9 @@ static void OpenAccessibilitySettings(void) {
     [alert addButtonWithTitle:@"清空"];
     [alert addButtonWithTitle:@"取消"];
     if ([alert runModal] == NSAlertFirstButtonReturn) {
+        BOOL hadItems = self.store.items.count > 0;
         [self.store clear];
+        if (hadItems && !self.store.items.count) [Analytics reportFeature:@"clipboard_history_cleared"];
     }
 }
 
@@ -724,6 +745,7 @@ static EventHotKeyRef RegisterShortcut(HandyMinisShortcut action, UInt32 code, U
     [Analytics track:@"queue_opened"];
     [self pollPasteboard];
     [self.panel show];
+    [Analytics reportFeature:@"clipboard_panel_opened"];
 }
 
 #pragma mark - QueuePanelDelegate
@@ -732,6 +754,15 @@ static EventHotKeyRef RegisterShortcut(HandyMinisShortcut action, UInt32 code, U
     NSUInteger generation = ++self.pasteGeneration;
     if (![self.store restoreItem:item plainText:plainText]) { NSBeep(); return; }
     if (paste) [Analytics track:@"paste_requested"];
+    NSString *event;
+    if (item.phraseName) {
+        event = paste ? @"phrase_paste_requested" : @"phrase_copied";
+    } else if (paste) {
+        event = plainText ? @"clipboard_plain_paste_requested" : @"clipboard_paste_requested";
+    } else {
+        event = @"clipboard_item_copied";
+    }
+    [Analytics reportFeature:event];
     [self rememberFrontApp];
     NSRunningApplication *target = self.previousApp;
     if (!target || target.terminated || target.processIdentifier == getpid()) target = nil;
@@ -784,7 +815,11 @@ static EventHotKeyRef RegisterShortcut(HandyMinisShortcut action, UInt32 code, U
 }
 
 - (void)queuePanel:(QueuePanel *)panel didDeleteItem:(ClipItem *)item {
+    BOOL phrase = item.phraseName != nil;
+    NSUInteger count = phrase ? self.store.phrases.count : self.store.items.count;
     [self.store deleteItem:item];
+    NSUInteger remaining = phrase ? self.store.phrases.count : self.store.items.count;
+    if (remaining < count) [Analytics reportFeature:phrase ? @"phrase_deleted" : @"clipboard_item_deleted"];
 }
 
 - (void)queuePanelDidRequestAccessibility:(QueuePanel *)panel {

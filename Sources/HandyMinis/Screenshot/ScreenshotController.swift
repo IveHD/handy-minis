@@ -2,6 +2,20 @@ import AppKit
 import ScreenCaptureKit
 import UniformTypeIdentifiers
 
+enum ScreenshotUsage: String {
+    case started = "screenshot_started"
+    case annotated = "screenshot_annotated"
+    case ocrCompleted = "screenshot_ocr_completed"
+    case ocrTextCopied = "screenshot_ocr_text_copied"
+    case imageCopied = "screenshot_image_copied"
+    case saved = "screenshot_saved"
+    case exported = "screenshot_exported"
+
+    static var report: ((Self) -> Void)?
+
+    func record() { Self.report?(self) }
+}
+
 private final class CapturePanel: NSPanel {
     weak var editor: CaptureView?
     override var canBecomeKey: Bool { true }
@@ -119,6 +133,7 @@ final class ScreenshotController: NSObject {
                 }
                 panels = captures
                 showPanels()
+                ScreenshotUsage.started.record()
             } catch {
                 showError("无法截取屏幕", detail: error.localizedDescription)
                 restoreFocus()
@@ -240,6 +255,7 @@ final class ScreenshotController: NSObject {
             if response == .OK, let url = savePanel.url {
                 do {
                     try data.write(to: url, options: .atomic)
+                    ScreenshotUsage.saved.record()
                     self.closeCapture(restore: true)
                     return
                 } catch {

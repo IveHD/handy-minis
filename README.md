@@ -97,6 +97,8 @@ HandyMinis 是一组放在 macOS 菜单栏里的顺手小工具。用它找回�
 
 剪贴板历史和 OCR 都在本机处理。发布版的匿名使用统计可在设置中关闭，复制内容、图片和文件路径不会上传。新版本可从 [GitHub Releases](https://github.com/IveHD/handy-minis/releases) 获取。
 
+配置阿里云 RUM 的构建会额外上报应用启动、崩溃诊断和剪贴板、常用语、文件暂存、截图、窗口整理的操作事件。功能事件只上报固定事件名。RUM SDK 会在本机生成并缓存设备标识。关闭「发送匿名使用统计」也会关闭 RUM。
+
 ## 从源码构建
 
 ### 发布应用内更新
@@ -119,6 +121,8 @@ scripts/package-dmg.sh
 ```
 
 生成 `HandyMinis.app` 和 `dist/HandyMinis-<版本>-macOS-Universal.dmg`。
+启用阿里云 RUM 时，从 [macOS 接入向导](https://help.aliyun.com/zh/cms/cloudmonitor-2-0/access-pc-platform-application) 获取应用的 AppID 和 ConfigAddress，运行 `bash scripts/setup-aliyun-rum.sh`，然后设置 `ALIYUN_RUM_APP_ID` 和 `ALIYUN_RUM_CONFIG_ADDRESS` 再构建。GitHub 发布流程从同名仓库变量读取这两项。
+
 `scripts/render-demos.sh` 可重新生成文档中的演示 GIF。
 
 `scripts/test-clipboard-navigation.sh` 使用隔离的示例记录检查连续选择、搜索、删除后的选中位置、Unicode 边界、缩略图异步加载与视图复用，并输出选择与布局耗时及浅色、深色、设置页截图（`.build/tests/`）。测试不读取用户的剪贴板历史，也不写入系统剪贴板；耗时不包含显示器合成与真实按键输入延迟。

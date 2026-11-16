@@ -2,6 +2,7 @@
 #import "QueuePanel.h"
 #import "AccessibilityTrust.h"
 #import "Theme.h"
+#import "Analytics.h"
 #import <ApplicationServices/ApplicationServices.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -756,6 +757,9 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
 
 - (void)changeSection:(id)sender {
     NSInteger section = self.sections.selectedSegment;
+    if (sender) {
+        [Analytics reportFeature:@[@"clipboard_history_viewed", @"phrase_viewed", @"file_shelf_viewed"][section]];
+    }
     BOOL phrases = section == ClipboardSectionPhrases;
     self.addPhraseButton.hidden = !phrases;
     BOOL shelf = section == ClipboardSectionFiles;
@@ -1026,8 +1030,10 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     ClipItem *item = [ClipItem new];
     item.kind = ClipKindText;
     item.text = HandyMinisTransformText(original.text, sender.tag);
-    if (item.text.length) [self.delegate queuePanel:self didChooseItem:item paste:YES plainText:YES];
-    else NSBeep();
+    if (item.text.length) {
+        [Analytics reportFeature:@"clipboard_text_cleaned"];
+        [self.delegate queuePanel:self didChooseItem:item paste:YES plainText:YES];
+    } else NSBeep();
 }
 
 - (void)contextStageFiles:(NSMenuItem *)sender {
@@ -1041,6 +1047,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
 }
 
 - (BOOL)stagePaths:(NSArray<NSString *> *)paths {
+    NSUInteger previousCount = self.shelfItems.count;
     BOOL foundFile = NO;
     for (NSString *path in paths) {
         NSString *normalized = path.stringByStandardizingPath;
@@ -1056,6 +1063,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
         item.createdAt = NSDate.date;
         [self.shelfItems addObject:item];
     }
+    if (self.shelfItems.count > previousCount) [Analytics reportFeature:@"file_shelf_added"];
     return foundFile;
 }
 
@@ -1107,6 +1115,11 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     return path && [NSFileManager.defaultManager fileExistsAtPath:path] ? [NSURL fileURLWithPath:path] : nil;
 }
 
+- (void)tableView:(NSTableView *)tableView draggingSession:(NSDraggingSession *)session
+       endedAtPoint:(NSPoint)screenPoint operation:(NSDragOperation)operation {
+    if (operation != NSDragOperationNone) [Analytics reportFeature:@"file_shelf_exported"];
+}
+
 - (void)newPhrase:(id)sender {
     [self editPhrase:nil];
 }
@@ -1153,6 +1166,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
             [failure beginSheetModalForWindow:self.panel completionHandler:nil];
             return;
         }
+        [Analytics reportFeature:item.phraseName ? @"phrase_edited" : @"phrase_created"];
         self.sections.selectedSegment = ClipboardSectionPhrases;
         self.searchField.stringValue = @"";
         [self changeSection:nil];
@@ -1167,6 +1181,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
     if (!item) return;
     if ([self.shelfItems containsObject:item]) {
         [self.shelfItems removeObjectIdenticalTo:item];
+        [Analytics reportFeature:@"file_shelf_removed"];
         [self reloadKeepingSelection:YES];
     } else {
         [self.delegate queuePanel:self didDeleteItem:item];
@@ -1198,7 +1213,7 @@ static NSTextField *MakeLabel(NSString *text, CGFloat size, NSFontWeight weight)
             NSInteger section = self.sections.selectedSegment + (event.keyCode == 123 ? -1 : 1);
             if (section >= 0 && section < ClipboardSectionCount) {
                 self.sections.selectedSegment = section;
-                [self changeSection:nil];
+                [self changeSection:self];
             }
             return nil;
         }

@@ -19,12 +19,17 @@ jobs:
           test -s "releases/${GITHUB_REF_NAME}.md"
       - name: Install Sparkle
         run: scripts/setup-sparkle.sh
+      - name: Install Alibaba Cloud RUM SDK
+        if: ${{ vars.ALIYUN_RUM_APP_ID != '' || vars.ALIYUN_RUM_CONFIG_ADDRESS != '' }}
+        run: bash scripts/setup-aliyun-rum.sh
       - name: Build app
         env:
           APTABASE_APP_KEY: A-US-7430534959
           RELEASE_BUILD: 1
           UPDATE_FEED_URL: https://ivehd.github.io/handy-minis/appcast.xml
           SPARKLE_PUBLIC_KEY: Jygnoy6wAtb5QTOC+1BBl91WiJTKChB27SZZbppE8Hw=
+          ALIYUN_RUM_APP_ID: ${{ vars.ALIYUN_RUM_APP_ID }}
+          ALIYUN_RUM_CONFIG_ADDRESS: ${{ vars.ALIYUN_RUM_CONFIG_ADDRESS }}
         run: APP_VERSION="${GITHUB_REF_NAME#v}" ./build.sh
       - name: Package
         run: scripts/package-dmg.sh
